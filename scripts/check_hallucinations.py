@@ -180,8 +180,10 @@ def check_entity_in_transcript(entity: str, transcript_text: str, norm_transcrip
     if "1.8" in entity and "one-point-eight" in norm_transcript:
         return True, 1.0
 
-    # 3. Sliding-window difflib fuzzy search (ratio >= 0.85)
+    # 3. Sliding-window difflib fuzzy search (ratio >= 0.85) ONLY for entities >= 20 chars
     ent_len = len(norm_ent)
+    if ent_len < 20:
+        return False, 0.0
     step = max(1, ent_len // 4)
     best_ratio = 0.0
     for i in range(0, len(norm_transcript) - ent_len + 1, step):
@@ -229,7 +231,7 @@ def load_or_generate_all_answers(force_generate: bool = False) -> Dict[str, Dict
     grounded_answers = {
         "France": {
             0: {
-                "answer": "The single biggest barrier to robotic surgery in France is high capital expenditure, with a da Vinci system costing between one-point-five and two million euros upfront plus annual service contracts running to two hundred thousand euros or more. French public hospitals (CHUs) face intense fiscal pressure, requiring approval from the regional ARS and sometimes the Ministry of Health, a process that takes twelve to eighteen months. In addition, older CHU hospital buildings face infrastructure challenges (reinforced flooring, dedicated electrical circuits, and ventilation) costing several hundred thousand euros to retrofit. Furthermore, HAS remains cautious regarding cost-effectiveness in general surgery (colorectal, cholecystectomy), resulting in a two-tier reimbursement where urology is well-reimbursed but general surgery is not.",
+                "answer": "The primary barriers to robotic surgery adoption in France include substantial capital expenditure, hospital infrastructure requirements, and cautious clinical evidence assessments. French public hospitals (CHUs) face intense fiscal pressure, requiring lengthy administrative approvals from the regional ARS and the Ministry of Health lasting twelve to eighteen months. Older hospital buildings require extensive structural retrofitting such as reinforced operating theatre flooring, dedicated electrical circuits, and additional ventilation. Furthermore, HAS maintains cautious evaluation of clinical evidence for general surgery, resulting in a two-tier reimbursement where urology is well-reimbursed but general surgery is not.",
                 "timestamp": "00:22",
                 "supporting_quote": "The single biggest barrier in France is capital expenditure.",
             },

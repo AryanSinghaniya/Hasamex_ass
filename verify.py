@@ -105,10 +105,16 @@ def verify_quote(
             return True, context[idx: idx + len(supporting_quote) + 20].strip()
         search_text = context
 
-    # 3. Fuzzy sliding-window match
+    # 3. Fuzzy sliding-window match (only for quotes >= 20 characters)
     norm_search = _normalize(search_text)
     q_len = len(norm_quote)
-    if q_len == 0:
+    if q_len < 20:
+        # Require exact substring match for short quotes (< 20 chars) to prevent false-positive matches
+        logger.warning(
+            "verify_quote: Short quote (%d chars < 20) not found as exact substring: '%s'",
+            q_len,
+            supporting_quote[:80],
+        )
         return False, None
 
     best_ratio = 0.0
@@ -213,7 +219,7 @@ def check_phrase_grounding(phrase: str, transcript_text: str, norm_transcript: s
     if not norm_phrase:
         return True
 
-    if norm_phrase in norm_transcript:
+    if re.search(rf"\b{re.escape(norm_phrase)}\b", norm_transcript):
         return True
 
     # Check written-out number equivalence
@@ -234,10 +240,15 @@ def check_phrase_grounding(phrase: str, transcript_text: str, norm_transcript: s
     for num, word in sorted(NUMBER_WORDS_MAP.items(), key=lambda x: -x[0]):
         phrase_in_words = re.sub(rf"\b{num}\b", word, phrase_in_words)
 
-    if phrase_in_words in norm_transcript:
+    if re.search(rf"\b{re.escape(phrase_in_words)}\b", norm_transcript):
         return True
 
+    # Minimum-length gate: Fuzzy matching is ONLY used for phrases with length >= 20 chars.
+    # Short phrases (< 20 chars) like acronyms and short names MUST be exact substring matches.
     p_len = len(norm_phrase)
+    if p_len < 20:
+        return False
+
     step = max(1, p_len // 4)
     best_ratio = 0.0
     for i in range(0, max(1, len(norm_transcript) - p_len + 1), step):
@@ -358,6 +369,19 @@ def verify_and_repair(
                 expert_name,
                 bad_quote=bad_quote_arg,
             )
+        if new_answer.get("rate_limited") or new_answer.get("error"):
+            logger.warning("[verify] Re-prompt returned rate limit or error; keeping first attempt.")
+            return {
+                **answer_json,
+                "supporting_quote": matched_quote if is_quote_valid else None,
+                "quote_verified": is_quote_valid,
+                "verified_quote": matched_quote if is_quote_valid else None,
+                "not_discussed": False,
+                "answer_grounded": is_answer_grounded,
+                "answer_ungrounded": not is_answer_grounded,
+                "ungrounded_claims": ungrounded_claims,
+            }
+
         new_quote = new_answer.get("supporting_quote", "")
         new_timestamp = new_answer.get("timestamp", timestamp)
         new_text = new_answer.get("answer", "")
