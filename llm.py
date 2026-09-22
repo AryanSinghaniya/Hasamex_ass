@@ -48,15 +48,15 @@ class RateLimitError(Exception):
 
 
 def _get_groq_key() -> Optional[str]:
-    """Retrieve ANTHROPIC_API_KEY from environment or Streamlit secrets."""
-    key = os.environ.get("ANTHROPIC_API_KEY")
+    """Retrieve GROQ_API_KEY from environment or Streamlit secrets."""
+    key = os.environ.get("GROQ_API_KEY")
     if not key:
         try:
             import streamlit as st
-            if "ANTHROPIC_API_KEY" in st.secrets:
-                key = st.secrets["ANTHROPIC_API_KEY"]
+            if "GROQ_API_KEY" in st.secrets:
+                key = st.secrets["GROQ_API_KEY"]
                 if key:
-                    os.environ["ANTHROPIC_API_KEY"] = key
+                    os.environ["GROQ_API_KEY"] = key
         except Exception:
             pass
     return key
@@ -219,7 +219,7 @@ def _call_groq(system: str, user_message: str, json_mode: bool = True) -> str:
     api_key = _get_groq_key()
     if not api_key:
         raise EnvironmentError(
-            "ANTHROPIC_API_KEY is not set. Please set it in .env or Streamlit Cloud Secrets."
+            "GROQ_API_KEY is not set. Please set it in .env or Streamlit Cloud Secrets."
         )
 
     headers = {
@@ -276,7 +276,7 @@ def _call_groq_chat(system: str, messages: list[dict]) -> str:
     api_key = _get_groq_key()
     if not api_key:
         raise EnvironmentError(
-            "ANTHROPIC_API_KEY is not set. Please set it in .env or Streamlit Cloud Secrets."
+            "GROQ_API_KEY is not set. Please set it in .env or Streamlit Cloud Secrets."
         )
 
     headers = {
