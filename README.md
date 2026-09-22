@@ -58,7 +58,7 @@ Hasamex_ass/
 ├── parser.py        # Transcript parsing: .txt → structured JSON chunks
 ├── llm.py           # Groq API wrapper — answers, synthesis, chat
 ├── verify.py        # Quote verification (anti-hallucination)
-├── tests.py         # Full unit test suite (24 tests)
+├── tests.py         # Full unit test suite (29 tests)
 ├── requirements.txt
 ├── README.md
 ├── .env.example
@@ -112,7 +112,7 @@ verify.py  ──► dual-layer verification:
 | `parser.py` | Reads `.txt` files; splits header (expert name, role, market) from timestamped body; returns list of `{expert_name, market, timestamp, speaker, text, chunk_index}` dicts; caches to `cache/parsed_<market>.json` |
 | `llm.py` | Calls Groq API via LPU inference; provides `get_expert_answer()`, `re_prompt_exact_quote()`, `synthesize_question()`, `ask_panel()`, and `retrieve_chunks()`. Active model set by `GROQ_MODEL` constant. All answers disk-cached keyed by `(model_id, question_hash, market, file_hash)`. |
 | `verify.py` | Layer 1: `verify_quote()` checks `supporting_quote` is a real substring of the transcript. Layer 2: `check_answer_grounding()` extracts numbers, currencies, proper nouns from the answer paragraph and verifies each against the transcript. `verify_and_repair()` orchestrates one re-prompt on failure. |
-| `app.py` | Streamlit UI: sidebar file status, per-expert tabs, Themes & Disagreements tab, Ask the Panel chat. Every answer card shows an unconditional quote-verification badge and an answer-grounding badge. |
+| `app.py` | Streamlit UI: sidebar file status and **File Uploader**, per-expert tabs, Themes & Disagreements tab, Ask the Panel chat. Every answer card shows an unconditional quote-verification badge and an answer-grounding badge. |
 
 ---
 
@@ -291,7 +291,7 @@ supports cache invalidation by expert or question.
 
 ## Running Tests & Diagnostics
 
-### 1. Run the Full Unit Test Suite (24 Tests)
+### 1. Run the Full Unit Test Suite (29 Tests)
 Validates header extraction, exact and whitespace-normalised quote verification, rejection of fabricated quotes, retry logic, cache invalidation, and retrieval grounding.
 
 ```bash
