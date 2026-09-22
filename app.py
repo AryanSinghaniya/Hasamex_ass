@@ -32,8 +32,9 @@ import streamlit as st
 
 # Sync Streamlit Community Cloud secrets into os.environ if available
 try:
-    if "ANTHROPIC_API_KEY" in st.secrets and not os.environ.get("ANTHROPIC_API_KEY"):
-        os.environ["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
+    for key in ("ANTHROPIC_API_KEY", "GEMINI_API_KEY"):
+        if key in st.secrets and not os.environ.get(key):
+            os.environ[key] = st.secrets[key]
 except Exception:
     pass
 
@@ -307,15 +308,13 @@ def _init_session():
     if "data_loaded" not in st.session_state:
         st.session_state.data_loaded = False
     # Re-evaluate api_key_ok from environment or Streamlit secrets
-    key = os.environ.get("ANTHROPIC_API_KEY")
-    if not key:
+    has_key = bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("GEMINI_API_KEY"))
+    if not has_key:
         try:
-            key = st.secrets.get("ANTHROPIC_API_KEY")
-            if key:
-                os.environ["ANTHROPIC_API_KEY"] = key
+            has_key = bool(st.secrets.get("ANTHROPIC_API_KEY") or st.secrets.get("GEMINI_API_KEY"))
         except Exception:
             pass
-    st.session_state.api_key_ok = bool(key)
+    st.session_state.api_key_ok = has_key
 
 
 # ── Data loading ──────────────────────────────────────────────────────────────
@@ -333,8 +332,8 @@ def _load_data(force: bool = False):
     On first load, calls log_all_headers() which prints the parsed expert
     name/role/market to stdout so identity bugs surface immediately in dev.
     """
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        logger.info("ANTHROPIC_API_KEY not detected.")
+    if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("GEMINI_API_KEY")):
+        logger.info("No API key detected in environment or secrets.")
 
     with st.spinner("📂 Parsing transcripts…"):
         try:
@@ -665,7 +664,7 @@ def _render_expert_tab(market: str):
 
     # Generate / retrieve answer
     if not st.session_state.api_key_ok:
-        st.warning("Please configure your `ANTHROPIC_API_KEY` in `.env` to generate answers.")
+        st.warning("Please configure an API key (`GEMINI_API_KEY` or `ANTHROPIC_API_KEY`) in `.env` or Streamlit Cloud Secrets to generate answers.")
         return
 
     with st.spinner(f"Generating answer for {market}…"):
@@ -702,7 +701,7 @@ def _render_synthesis_tab():
         return
 
     if not st.session_state.api_key_ok:
-        st.warning("Please configure your `ANTHROPIC_API_KEY` in `.env` to generate synthesis.")
+        st.warning("Please configure an API key (`GEMINI_API_KEY` or `ANTHROPIC_API_KEY`) in `.env` or Streamlit Cloud Secrets to generate synthesis.")
         return
 
     questions = st.session_state.questions
@@ -830,7 +829,7 @@ def _render_chat_tab():
         return
 
     if not st.session_state.api_key_ok:
-        st.warning("Please configure your `ANTHROPIC_API_KEY` in `.env` to use the chat.")
+        st.warning("Please configure an API key (`GEMINI_API_KEY` or `ANTHROPIC_API_KEY`) in `.env` or Streamlit Cloud Secrets to use the chat.")
         return
 
     # Render chat history
@@ -956,10 +955,10 @@ def main():
     if not st.session_state.data_loaded:
         _load_data()
 
-    # API key warning (only shows if missing ANTHROPIC_API_KEY)
+    # API key warning (only shows if missing keys)
     if not st.session_state.api_key_ok:
         st.warning(
-            "⚠️ No API key found. Please add your `ANTHROPIC_API_KEY` to your `.env` file (local) or into **Settings → Secrets** (Streamlit Cloud).",
+            "⚠️ No API key found. Please add `GEMINI_API_KEY` (Free) or `ANTHROPIC_API_KEY` to your `.env` file (local) or **Settings → Secrets** (Streamlit Cloud).",
             icon="🔑",
         )
 
