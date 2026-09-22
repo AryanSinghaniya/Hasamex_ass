@@ -1,0 +1,75 @@
+Expert Interview Transcript
+============================
+Expert Name: Anna Keller
+Role: Former Hospital Procurement Director, Klinikum München; Independent Healthcare Strategy Consultant
+Market: Germany
+Interview Date: 2026-09-12
+Interviewer: James Whitfield, Hasamex Research
+
+--------------------------------------------------------------------------
+
+00:10
+Interviewer: Anna, thank you for your time. Let's start with adoption barriers for robotic surgery in Germany.
+
+00:18
+Anna Keller: Thank you. Germany has a somewhat different profile from other European markets. The upfront capital cost is still a significant factor — similar price points to France — but Germany's hospital financing system creates its own specific hurdles. DRG tariffs in Germany are negotiated nationally through the InEK process, and robotic procedures, in most specialties, are bundled into the same DRG as their conventional equivalents. So the hospital absorbs the incremental cost of robotic surgery — principally the consumables, which are roughly twelve hundred to eighteen hundred euros per case — within a fixed tariff envelope. That's a structural disincentive.
+
+01:05
+Anna Keller: A second barrier is the German regulatory and procurement environment. Germany has a federal structure, so hospital investment decisions vary significantly by Bundesland. In Bavaria, for instance, state hospital investment funds have been more generous, which explains why Bavarian hospitals have a higher robotic density than, say, hospitals in eastern Germany. The east still has significant infrastructure debt, and robotic surgery competes with basic infrastructure needs.
+
+01:38
+Interviewer: Is there also a clinical culture dimension?
+
+01:43
+Anna Keller: Yes, and this is underappreciated. Germany has a very strong tradition of open surgery and, in laparoscopy, a tradition of technical excellence built over decades. There is a cohort of senior surgeons — particularly in general surgery — who are sceptical of robotic surgery and see it as driven by marketing rather than evidence. This generational dynamic is real. The younger generation of surgeons is much more receptive, but they don't yet hold department head positions, so their influence on procurement decisions is limited.
+
+02:22
+Interviewer: How does reimbursement work, specifically? You touched on DRGs — is there any pathway for additional recognition of robotic procedures?
+
+02:31
+Anna Keller: There are two relevant mechanisms. First, the NUB — Neue Untersuchungs- und Behandlungsmethoden — process allows hospitals to apply for a supplementary payment for innovative procedures not yet fully covered by existing DRGs. Several hospitals have successfully obtained NUB status for robotic procedures, particularly in urology and thoracic surgery. This gives them an additional payment per case for up to four years while evidence accumulates for inclusion in the standard DRG catalogue. It's a useful transitional mechanism but it's application-heavy and hospital-specific.
+
+03:12
+Anna Keller: Second, the G-BA — the Federal Joint Committee — has the authority to issue coverage mandates or restrictions. In 2025, the G-BA initiated a review of robotic-assisted prostatectomy. The preliminary assessment is favourable for radical prostatectomy — the evidence is strong. If the G-BA issues a positive recommendation, it could trigger a formal DRG restructuring that gives robotic prostatectomy its own, higher-value DRG. That would be transformative for the economics. I'd say we're twelve to eighteen months away from a final decision.
+
+03:58
+Interviewer: Let's talk about competitive dynamics. How do you see the landscape in Germany?
+
+04:05
+Anna Keller: Germany is probably da Vinci's strongest European market by installed base — I'd estimate around three hundred systems, perhaps more. But competition is intensifying. Medtronic's Hugo has had a faster uptake in Germany than in France, partly because certain major centres ran early European clinical trials of Hugo in colorectal surgery, which gave the platform credibility. Johnson and Johnson's Ottava system, when it eventually clears CE mark, will be another significant entrant.
+
+04:45
+Anna Keller: The factor that most surprises procurement people when they do a thorough cost analysis is the total cost of consumables over a ten-year period. For a high-volume urological programme — say, three hundred cases per year — the consumable spend with da Vinci exceeds the capital cost of some competing platforms. That arithmetic is driving much more rigorous cost modelling than we saw five years ago.
+
+05:15
+Interviewer: On training — what's the situation for surgeons in Germany?
+
+05:22
+Anna Keller: Germany has arguably the most structured approach in Europe, but still not a unified national standard. The Deutsche Gesellschaft fur Chirurgie has published consensus recommendations on robotic training standards, and many Landesarztekammern — the state medical chambers — have begun incorporating robotic competencies into their specialist training frameworks. But it's not yet a formal, legally mandated credentialing process.
+
+05:58
+Anna Keller: What I observe from procurement conversations is that training pathways differ by platform and by specialty. In urology, da Vinci training is deeply embedded — virtually all high-volume urologists have gone through the Intuitive pathway. In general surgery, training is more fragmented. The bottleneck I hear most often from clinical leads is proctored case requirements — you need a certain number of supervised cases to be signed off, but finding an experienced proctor at your own institution is difficult if the programme is new. Fellowship programmes are emerging to address this.
+
+06:38
+Interviewer: On procurement decisions — how do German hospitals structure these?
+
+06:45
+Anna Keller: It varies significantly by hospital type. At university hospitals, procurement goes through a formal investment committee and requires a detailed health technology assessment — essentially an internal HTA — justifying the acquisition against alternatives. The finance director, the medical director, and the relevant clinical department heads are all key stakeholders. For private hospital chains — Helios, Asklepios, Sana — procurement is increasingly centralised at group level, which creates both opportunities and constraints. A group-level contract with Intuitive for fifty hospitals is a very different negotiation than individual hospital deals.
+
+07:28
+Anna Keller: On financing models: in Germany, the usage-based model has been slower to take hold than in France. German hospital administrators tend to prefer the certainty of capital ownership, partly because of how hospital accounting and depreciation work within the DRG system. However, I'm seeing this shift, particularly in private chains. Helios signed a framework agreement in 2025 that includes a pay-per-procedure element for their robotic programme rollout.
+
+08:05
+Interviewer: Looking ahead — what's your three-to-five year outlook?
+
+08:11
+Anna Keller: I'm cautiously optimistic. The German market is big enough to absorb a significant growth in installed base — I'd forecast a move from around three hundred to six hundred systems by 2030, driven primarily by urology continuing at high volume, plus a significant expansion into thoracic surgery and colorectal. The key catalysts are: the G-BA prostatectomy decision I mentioned; potential DRG reform that creates positive economics for robotic procedures across multiple specialties; and technological advances, particularly in AI-assisted tissue recognition and anastomotic quality assessment.
+
+08:55
+Anna Keller: The risk to this outlook is health system austerity. Germany's hospital reform — the Krankenhausreform — is designed to concentrate hospital activity into larger, better-resourced centres. If that consolidation happens as planned, it could actually accelerate robotic adoption at the surviving centres, but it creates significant uncertainty for smaller hospitals that might have been candidates for first robotic installations. So the distribution of growth may be more concentrated than the headline numbers suggest.
+
+09:35
+Interviewer: That's an excellent perspective. Thank you very much, Anna.
+
+09:40
+Anna Keller: Happy to help. Good luck with the research.

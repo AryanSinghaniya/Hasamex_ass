@@ -1,0 +1,17 @@
+# Environment variables and secrets (DO NOT COMMIT)
+.env
+.env.local
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# App cache
+cache/
+.pytest_cache/
+
+# System / IDE
+.system_generated/
+.DS_Store
+Thumbs.db
