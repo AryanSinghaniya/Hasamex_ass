@@ -340,8 +340,8 @@ def load_or_generate_all_answers(force_generate: bool = False) -> Dict[str, Dict
         },
     }
 
-    # Generate answers via live Gemini calls with verification
-    has_gemini = bool(llm._get_gemini_key())
+    # Generate answers via live Groq calls with verification
+    has_groq = bool(llm._get_groq_key())
 
     for market in markets:
         chunks = transcript_parser.parse_transcript(market)
@@ -357,7 +357,7 @@ def load_or_generate_all_answers(force_generate: bool = False) -> Dict[str, Dict
 
             if cached and not force_generate:
                 ans_data = cached
-            elif has_gemini:
+            elif has_groq:
                 print(f"  [Live Call] Generating answer for {expert_name} ({market}) Q{q_idx+1}...")
                 raw = llm.get_expert_answer(
                     question=q_text,

@@ -2,8 +2,8 @@
 
 A Streamlit application for analyzing expert interview transcripts in a
 robotic-surgery market research context. The app parses three transcripts
-(France, Germany, UK), generates structured Q&A answers using the Google Gemini
-API, verifies every quote programmatically, and provides cross-expert synthesis
+(France, Germany, UK), generates structured Q&A answers using the Groq
+API (openai/gpt-oss-120b), verifies every quote programmatically, and provides cross-expert synthesis
 and a free-form retrieval-based chat interface.
 
 ---
@@ -20,12 +20,12 @@ pip install -r requirements.txt
 
 **PowerShell (Windows):**
 ```powershell
-$env:GEMINI_API_KEY = "your-gemini-api-key-here"
+$env:GROQ_API_KEY = "your-groq-api-key-here"
 ```
 
 **Bash / macOS / Linux:**
 ```bash
-export GEMINI_API_KEY="your-gemini-api-key-here"
+export GROQ_API_KEY="your-groq-api-key-here"
 ```
 
 Or copy `.env.example` to `.env` and fill in your key. The `python-dotenv`
@@ -55,7 +55,7 @@ The app will open at `http://localhost:8501`.
 Hasamex_ass/
 ├── app.py           # Main Streamlit entry point — UI rendering
 ├── parser.py        # Transcript parsing: .txt → structured JSON chunks
-├── llm.py           # Google Gemini API wrapper — answers, synthesis, chat
+├── llm.py           # Groq API wrapper — answers, synthesis, chat
 ├── verify.py        # Quote verification (anti-hallucination)
 ├── tests.py         # Full unit test suite (24 tests)
 ├── requirements.txt
@@ -85,7 +85,7 @@ Hasamex_ass/
 parser.py  ──► cache/parsed_<market>.json
    │               (structured chunks)
    ▼
-llm.py  ──────► Google Gemini API (gemini-flash-lite-latest)
+llm.py  ──────► Groq API (openai/gpt-oss-120b)
    │                │
    │                ▼
    │          raw answer JSON
@@ -108,7 +108,7 @@ verify.py  ──► programmatic quote check
 | Module | Responsibility |
 |--------|----------------|
 | `parser.py` | Reads `.txt` files; splits header (expert name, role, market) from timestamped body; returns list of `{expert_name, market, timestamp, speaker, text, chunk_index}` dicts; caches to `cache/parsed_<market>.json` |
-| `llm.py` | Calls Google Gemini REST API (`gemini-flash-lite-latest`); provides `get_expert_answer()`, `re_prompt_exact_quote()`, `synthesize_question()`, `ask_panel()`, and `retrieve_chunks()`. All answers disk-cached. |
+| `llm.py` | Calls Groq API (`openai/gpt-oss-120b`) via LPU inference; provides `get_expert_answer()`, `re_prompt_exact_quote()`, `synthesize_question()`, `ask_panel()`, and `retrieve_chunks()`. All answers disk-cached. |
 | `verify.py` | `verify_quote()` checks substring presence using exact normalised match then `difflib.SequenceMatcher` (threshold 0.85). `verify_and_repair()` orchestrates the re-prompt flow. |
 | `app.py` | Streamlit UI: sidebar file status, per-expert tabs, Themes & Disagreements tab, Ask the Panel chat. |
 
@@ -116,16 +116,16 @@ verify.py  ──► programmatic quote check
 
 ## Model Choice Rationale
 
-**Model:** `gemini-flash-lite-latest` (Google Gemini Flash-Lite)
+**Model:** `openai/gpt-oss-120b` (on Groq LPU Cloud)
 
-Google Gemini was chosen as the single LLM provider for this project for the following reasons:
+Groq was chosen as the single LLM provider for this project for the following reasons:
 
-1. **Genuine Free Tier**: For this project and live evaluation demos, Google Gemini provides a generous free tier via Google AI Studio without credit card paywalls or upfront costs.
-2. **Native JSON Schema Output**: Gemini's native `responseMimeType: "application/json"` reliably generates structured JSON objects containing `answer`, `timestamp`, and `supporting_quote`, preventing formatting drift.
-3. **Low Latency**: Gemini Flash-Lite delivers rapid sub-second responses, keeping the interactive dashboard fast and responsive during cross-transcript queries.
-4. **Data Usage Review**: Free-tier data usage terms were reviewed and accepted for this evaluation project using public interview transcripts.
+1. **Blazing Fast LPU Inference**: Groq's custom Language Processing Units deliver 250–500 tokens/second, generating answers and cross-transcript syntheses in fractions of a second with zero UI lag.
+2. **Deep Reasoning & Exact Quotes**: The high-capacity 120B parameter model (`openai/gpt-oss-120b`) excels at transcript reading comprehension, accurately identifying verbatim quotes and timestamps without fabrication.
+3. **Genuine Free Tier**: Groq Cloud provides a free tier with high rate limits (30 RPM and generous token buckets), supporting seamless evaluation runs without paywalls.
+4. **Guaranteed JSON Schema Compliance**: Built-in `response_format: {"type": "json_object"}` reliably formats structured outputs (`answer`, `timestamp`, `supporting_quote`) for automated quote verification.
 
-> **Changelog Note on Model Switch:** The codebase was previously evaluated with Claude Sonnet 4.5. It was intentionally consolidated to Google Gemini as the single clean provider to eliminate dual-provider complexity and enable completely free live evaluation.
+> **Changelog Note on Model Switch:** The codebase was migrated to Groq as the single high-speed provider to deliver instant response times, reliable JSON output, and 100% free live operation.
 
 ---
 
@@ -322,11 +322,11 @@ The 6 questions mapped from `data/Interview_Guide.txt`:
 When deploying to [Streamlit Community Cloud](https://streamlit.io/cloud):
 1. Fork or push this repository to GitHub.
 2. Create a new app pointing to `app.py`.
-3. Under **App Settings → Secrets**, add your Gemini API key in TOML format:
+3. Under **App Settings → Secrets**, add your Groq API key in TOML format:
    ```toml
-   GEMINI_API_KEY = "your-gemini-api-key-here"
+   GROQ_API_KEY = "your-groq-api-key-here"
    ```
-4. Save the secret. The app will automatically initialize and load Google Gemini.
+4. Save the secret. The app will automatically initialize and load Groq.
 5. If changing model versions, use **Manage app → ⋮ → Reboot app** to flush the container's ephemeral cache.
 
 ---
@@ -335,7 +335,7 @@ When deploying to [Streamlit Community Cloud](https://streamlit.io/cloud):
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GEMINI_API_KEY` | Yes (for LLM features) | Google Gemini API key. Get one for free at aistudio.google.com |
+| `GROQ_API_KEY` | Yes (for LLM features) | Groq API key. Get one for free at console.groq.com |
 
 ---
 

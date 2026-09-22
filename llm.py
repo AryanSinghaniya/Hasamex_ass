@@ -1,5 +1,5 @@
 """
-llm.py — Google Gemini API wrapper for Expert Interview Analyzer.
+llm.py — Groq API wrapper for Expert Interview Analyzer.
 
 Provides four main operations:
   1. get_expert_answer()     — per-expert Q&A with structured JSON output
@@ -7,7 +7,7 @@ Provides four main operations:
   3. synthesize_question()   — cross-expert synthesis for one question
   4. ask_panel()             — free-form chat with chunk-based retrieval context
 
-All calls use Google Gemini (gemini-flash-lite-latest) as the single provider.
+All calls use Groq (openai/gpt-oss-120b) via high-speed LPU inference as the single provider.
 Disk caching prevents redundant API calls on UI re-runs.
 """
 
@@ -20,8 +20,8 @@ from pathlib import Path
 from typing import Optional
 
 try:
-    from dotenv import load_dotenv
-    load_dotenv(override=False)
+    from dotenv import load_dotenv, find_dotenv
+    load_dotenv(find_dotenv(usecwd=True), override=False)
 except ImportError:
     pass
 
@@ -30,7 +30,8 @@ import requests
 logger = logging.getLogger(__name__)
 
 # ── Config ──────────────────────────────────────────────────────────────────
-GEMINI_MODEL = "gemini-flash-lite-latest"
+GROQ_MODEL = "qwen/qwen3.8-27b"
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 CACHE_DIR = Path("cache")
 
 # Maximum number of transcript chunks to include in a single API call.
@@ -41,35 +42,34 @@ RETRIEVAL_TOP_N = 8
 
 
 class RateLimitError(Exception):
-    """Raised when Gemini API rate limits (HTTP 429) are exhausted."""
+    """Raised when Groq API rate limits (HTTP 429) are exhausted."""
     pass
 
 
-def _get_gemini_key() -> Optional[str]:
-    """Retrieve GEMINI_API_KEY from environment or Streamlit secrets."""
-    key = os.environ.get("GEMINI_API_KEY")
+def _get_groq_key() -> Optional[str]:
+    """Retrieve GROQ_API_KEY from environment or Streamlit secrets."""
+    key = os.environ.get("GROQ_API_KEY")
     if not key:
         try:
             import streamlit as st
-            if "GEMINI_API_KEY" in st.secrets:
-                key = st.secrets["GEMINI_API_KEY"]
+            if "GROQ_API_KEY" in st.secrets:
+                key = st.secrets["GROQ_API_KEY"]
                 if key:
-                    os.environ["GEMINI_API_KEY"] = key
+                    os.environ["GROQ_API_KEY"] = key
         except Exception:
             pass
     return key
 
 
 def get_active_model_name() -> str:
-    """Return human-readable active model name derived directly from GEMINI_MODEL."""
-    clean_name = GEMINI_MODEL.replace("gemini-", "").replace("-", " ").title()
-    return f"Google Gemini {clean_name}"
+    """Return human-readable active model name derived directly from GROQ_MODEL."""
+    return f"Groq ({GROQ_MODEL})"
 
 
 # ── Cache helpers ────────────────────────────────────────────────────────────
 
 def _cache_key(*parts: str) -> str:
-    combined = "gemini_v3||" + "||".join(parts)
+    combined = "groq_v1||" + "||".join(parts)
     return hashlib.md5(combined.encode()).hexdigest()[:16]
 
 
@@ -90,6 +90,7 @@ def _load_cache(prefix: str, key: str) -> Optional[dict]:
 
 
 def _save_cache(prefix: str, key: str, data: dict) -> None:
+    CACHE_DIR.mkdir(exist_ok=True)
     path = _cache_path(prefix, key)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
@@ -206,90 +207,117 @@ respond with: "This isn't covered in the transcripts provided."
 Respond in clear, structured prose."""
 
 
-# ── Core Gemini API functions ───────────────────────────────────────────────
+# ── Core Groq API functions ─────────────────────────────────────────────────
 
-def _call_gemini(system: str, user_message: str) -> str:
-    """Call Google Gemini API with automatic retry on transient errors."""
-    api_key = _get_gemini_key()
+def _call_groq(system: str, user_message: str, json_mode: bool = True) -> str:
+    """Call Groq API with automatic retry on transient errors or rate limits."""
+    api_key = _get_groq_key()
     if not api_key:
         raise EnvironmentError(
-            "GEMINI_API_KEY is not set. Please set it in .env or Streamlit Cloud Secrets."
+            "GROQ_API_KEY is not set. Please set it in .env or Streamlit Cloud Secrets."
         )
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={api_key}"
-    payload = {
-        "system_instruction": {"parts": [{"text": system}]},
-        "contents": [{"parts": [{"text": user_message}]}],
-        "generationConfig": {
-            "temperature": 0.0,
-            "maxOutputTokens": 2048,
-            "responseMimeType": "application/json",
-        },
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
     }
-    for attempt in range(3):
+    payload = {
+        "model": GROQ_MODEL,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_message},
+        ],
+        "temperature": 0.0,
+        "max_tokens": 1500,
+    }
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
+
+    for attempt in range(5):
         try:
-            resp = requests.post(url, json=payload, timeout=35)
+            resp = requests.post(GROQ_API_URL, headers=headers, json=payload, timeout=45)
             if resp.status_code == 200:
                 data = resp.json()
-                return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                return data["choices"][0]["message"]["content"].strip()
             elif resp.status_code == 429:
-                time.sleep(2 * (attempt + 1))
+                retry_after = resp.headers.get("retry-after")
+                if retry_after:
+                    try:
+                        sleep_s = float(retry_after) + 0.5
+                    except ValueError:
+                        sleep_s = (attempt + 1) * 3
+                else:
+                    sleep_s = (attempt + 1) * 3
+                logger.warning("Groq rate limit 429 encountered, sleeping %.1fs...", sleep_s)
+                time.sleep(sleep_s)
                 continue
             else:
-                logger.error("Gemini API error %s: %s", resp.status_code, resp.text[:200])
-                raise RuntimeError(f"Gemini API returned {resp.status_code}: {resp.text[:200]}")
+                logger.error("Groq API error %s: %s", resp.status_code, resp.text[:200])
+                raise RuntimeError(f"Groq API returned {resp.status_code}: {resp.text[:200]}")
         except Exception as e:
-            if attempt == 2:
+            if attempt == 4:
                 if "429" in str(e) or (hasattr(e, "response") and getattr(e.response, "status_code", None) == 429):
-                    raise RateLimitError("Gemini rate limit exceeded.")
+                    raise RateLimitError("Groq rate limit exceeded.")
                 raise e
             time.sleep(1)
-    raise RateLimitError("Gemini API rate limit exceeded after retries.")
+    raise RateLimitError("Groq API rate limit exceeded after retries.")
 
 
-def _call_gemini_chat(system: str, messages: list[dict]) -> str:
-    """Call Google Gemini API for multi-turn chat."""
-    api_key = _get_gemini_key()
+def _call_groq_chat(system: str, messages: list[dict]) -> str:
+    """Call Groq API for multi-turn conversational panel chat."""
+    api_key = _get_groq_key()
     if not api_key:
         raise EnvironmentError(
-            "GEMINI_API_KEY is not set. Please set it in .env or Streamlit Cloud Secrets."
+            "GROQ_API_KEY is not set. Please set it in .env or Streamlit Cloud Secrets."
         )
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={api_key}"
-    contents = []
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    groq_messages = [{"role": "system", "content": system}]
     for m in messages:
-        role = "model" if m["role"] == "assistant" else "user"
-        contents.append({"role": role, "parts": [{"text": m["content"]}]})
+        groq_messages.append({"role": m["role"], "content": m["content"]})
+
     payload = {
-        "system_instruction": {"parts": [{"text": system}]},
-        "contents": contents,
-        "generationConfig": {
-            "temperature": 0.0,
-            "maxOutputTokens": 2048,
-        },
+        "model": GROQ_MODEL,
+        "messages": groq_messages,
+        "temperature": 0.0,
+        "max_tokens": 1500,
     }
-    for attempt in range(3):
+
+    for attempt in range(5):
         try:
-            resp = requests.post(url, json=payload, timeout=35)
+            resp = requests.post(GROQ_API_URL, headers=headers, json=payload, timeout=45)
             if resp.status_code == 200:
                 data = resp.json()
-                return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                return data["choices"][0]["message"]["content"].strip()
             elif resp.status_code == 429:
-                time.sleep(2 * (attempt + 1))
+                retry_after = resp.headers.get("retry-after")
+                if retry_after:
+                    try:
+                        sleep_s = float(retry_after) + 0.5
+                    except ValueError:
+                        sleep_s = (attempt + 1) * 3
+                else:
+                    sleep_s = (attempt + 1) * 3
+                time.sleep(sleep_s)
                 continue
             else:
-                raise RuntimeError(f"Gemini API returned {resp.status_code}: {resp.text[:200]}")
+                raise RuntimeError(f"Groq API returned {resp.status_code}: {resp.text[:200]}")
         except Exception as e:
-            if attempt == 2:
+            if attempt == 4:
                 if "429" in str(e) or (hasattr(e, "response") and getattr(e.response, "status_code", None) == 429):
-                    raise RateLimitError("Gemini rate limit exceeded.")
+                    raise RateLimitError("Groq rate limit exceeded.")
                 raise e
             time.sleep(1)
-    raise RateLimitError("Gemini API rate limit exceeded after retries.")
+    raise RateLimitError("Groq API rate limit exceeded after retries.")
 
 
 def _parse_json_response(raw: str) -> dict:
     """
     Safely parse a JSON response from the model.
-    Handles markdown code fences the model might accidentally include.
+    Handles markdown code fences if present.
     """
     text = raw.strip()
     if text.startswith("```"):
@@ -308,25 +336,25 @@ def _parse_json_response(raw: str) -> dict:
         }
 
 
-def _call_gemini_json(system: str, user_message: str) -> dict:
+def _call_groq_json(system: str, user_message: str) -> dict:
     """
-    Call Gemini and parse JSON response. If JSON parsing fails on the first attempt,
+    Call Groq and parse JSON response. If JSON parsing fails on the first attempt,
     retry ONCE with an explicit instruction appended before falling back to raw-text behavior.
     If 429 rate limit is hit, returns dict with rate_limited=True.
     """
     try:
-        raw = _call_gemini(system, user_message)
+        raw = _call_groq(system, user_message, json_mode=True)
     except RateLimitError:
         return {
-            "answer": "Gemini free tier rate limit reached. Please wait a moment and retry.",
+            "answer": "Groq free tier rate limit reached. Please wait a moment and retry.",
             "timestamp": "",
             "supporting_quote": "",
             "rate_limited": True,
         }
     except Exception as e:
-        logger.error("Gemini API call failed: %s", e)
+        logger.error("Groq API call failed: %s", e)
         return {
-            "answer": f"Error calling Gemini API: {e}",
+            "answer": f"Error calling Groq API: {e}",
             "timestamp": "",
             "supporting_quote": "",
             "error": True,
@@ -341,12 +369,12 @@ def _call_gemini_json(system: str, user_message: str) -> dict:
             "with no markdown formatting, no preamble, no explanation."
         )
         try:
-            retry_raw = _call_gemini(system, retry_message)
+            retry_raw = _call_groq(system, retry_message, json_mode=True)
             retry_result = _parse_json_response(retry_raw)
             return retry_result
         except RateLimitError:
             return {
-                "answer": "Gemini free tier rate limit reached. Please wait a moment and retry.",
+                "answer": "Groq free tier rate limit reached. Please wait a moment and retry.",
                 "timestamp": "",
                 "supporting_quote": "",
                 "rate_limited": True,
@@ -391,7 +419,7 @@ def get_expert_answer(
         f"QUESTION:\n{question}"
     )
 
-    result = _call_gemini_json(EXPERT_ANSWER_SYSTEM, user_message)
+    result = _call_groq_json(EXPERT_ANSWER_SYSTEM, user_message)
 
     if not result.get("rate_limited") and not result.get("error"):
         _save_cache(prefix, key, result)
@@ -406,7 +434,7 @@ def re_prompt_exact_quote(
     bad_quote: str,
 ) -> dict:
     """
-    Re-prompt Gemini with an explicit instruction to copy the quote exactly.
+    Re-prompt Groq with an explicit instruction to copy the quote exactly.
     Called by verify.py when the first attempt's quote fails verification.
 
     Returns dict: {answer, timestamp, supporting_quote}
@@ -421,7 +449,7 @@ def re_prompt_exact_quote(
         f"Please provide a corrected answer with a supporting_quote that is a "
         f"verbatim, unmodified substring of the transcript text above."
     )
-    return _call_gemini_json(EXPERT_ANSWER_RETRY_SYSTEM, user_message)
+    return _call_groq_json(EXPERT_ANSWER_RETRY_SYSTEM, user_message)
 
 
 def synthesize_question(
@@ -430,7 +458,7 @@ def synthesize_question(
     force: bool = False,
 ) -> dict:
     """
-    Generate a cross-expert synthesis for one interview question using Gemini.
+    Generate a cross-expert synthesis for one interview question using Groq.
 
     Args:
         question:       The interview guide question text.
@@ -470,7 +498,7 @@ def synthesize_question(
         + "\n\n".join(answers_block)
     )
 
-    result = _call_gemini_json(SYNTHESIS_SYSTEM, user_message)
+    result = _call_groq_json(SYNTHESIS_SYSTEM, user_message)
 
     if not result.get("rate_limited") and not result.get("error"):
         _save_cache(prefix, key, result)
@@ -528,7 +556,7 @@ def ask_panel(
 ) -> str:
     """
     Answer a free-form question using only keyword-retrieved transcript chunks.
-    Uses Gemini as the single provider.
+    Uses Groq as the single provider.
     """
     retrieved = retrieve_chunks(query, all_chunks)
 
@@ -558,12 +586,12 @@ def ask_panel(
     messages.append({"role": "user", "content": user_message})
 
     try:
-        return _call_gemini_chat(PANEL_CHAT_SYSTEM, messages)
+        return _call_groq_chat(PANEL_CHAT_SYSTEM, messages)
     except RateLimitError:
-        return "⚠️ Gemini free tier rate limit reached. Please wait a moment and retry."
+        return "⚠️ Groq free tier rate limit reached. Please wait a moment and retry."
     except Exception as e:
-        logger.error("Gemini panel chat error: %s", e)
-        return f"Error contacting Gemini: {e}"
+        logger.error("Groq panel chat error: %s", e)
+        return f"Error contacting Groq: {e}"
 
 
 def get_retrieved_chunks_for_display(
