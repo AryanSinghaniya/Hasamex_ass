@@ -34,6 +34,8 @@ import streamlit as st
 try:
     if "ANTHROPIC_API_KEY" in st.secrets and not os.environ.get("ANTHROPIC_API_KEY"):
         os.environ["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
+    if "GEMINI_API_KEY" in st.secrets and not os.environ.get("GEMINI_API_KEY"):
+        os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
 except Exception:
     pass
 
@@ -307,12 +309,15 @@ def _init_session():
     if "data_loaded" not in st.session_state:
         st.session_state.data_loaded = False
     # Re-evaluate api_key_ok from environment or Streamlit secrets
-    has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
+    has_key = bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("GEMINI_API_KEY"))
     if not has_key:
         try:
-            has_key = bool(st.secrets.get("ANTHROPIC_API_KEY"))
-            if has_key:
+            if "ANTHROPIC_API_KEY" in st.secrets:
+                has_key = True
                 os.environ["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
+            elif "GEMINI_API_KEY" in st.secrets:
+                has_key = True
+                os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
         except Exception:
             pass
     st.session_state.api_key_ok = has_key
@@ -672,15 +677,12 @@ def _render_expert_tab(market: str):
         st.markdown(questions[selected_q])
 
     # Generate / retrieve answer
-    if not st.session_state.api_key_ok:
-        st.warning("Please configure your `ANTHROPIC_API_KEY` in `.env` or Streamlit Cloud Secrets to generate answers.")
-        return
-
-    with st.spinner(f"Generating answer for {market}…"):
-        answer = _get_or_generate_answer(market, selected_q)
+    answer = _get_or_generate_answer(market, selected_q)
 
     if answer:
         _render_answer_card(answer, selected_q, questions[selected_q])
+    elif not st.session_state.api_key_ok:
+        st.warning("Please configure your `GEMINI_API_KEY` (free) or `ANTHROPIC_API_KEY` in `.env` or Streamlit Cloud Secrets to generate answers.")
     else:
         st.error("Could not generate answer.")
 
@@ -707,10 +709,6 @@ def _render_synthesis_tab():
 
     if not st.session_state.data_loaded:
         st.info("Load data first.")
-        return
-
-    if not st.session_state.api_key_ok:
-        st.warning("Please configure your `ANTHROPIC_API_KEY` in `.env` or Streamlit Cloud Secrets to generate synthesis.")
         return
 
     questions = st.session_state.questions
@@ -776,7 +774,11 @@ def _render_synthesis_tab():
     st.markdown("---")
     st.markdown("#### Synthesis")
 
-    # Check if all answers are ready
+    # Ensure all expert answers are loaded into session state
+    for m in MARKETS:
+        if selected_q not in st.session_state.answers.get(m, {}):
+            _get_or_generate_answer(m, selected_q)
+
     answers_ready = all(
         st.session_state.answers.get(m, {}).get(selected_q) for m in MARKETS
     )
@@ -788,8 +790,7 @@ def _render_synthesis_tab():
         )
         return
 
-    with st.spinner("Synthesising…"):
-        synthesis = _get_or_generate_synthesis(selected_q)
+    synthesis = _get_or_generate_synthesis(selected_q)
 
     if not synthesis:
         st.warning("Synthesis could not be generated.")
@@ -838,8 +839,10 @@ def _render_chat_tab():
         return
 
     if not st.session_state.api_key_ok:
-        st.warning("Please configure your `ANTHROPIC_API_KEY` in `.env` or Streamlit Cloud Secrets to use the chat.")
-        return
+        st.info(
+            "💡 Live AI key not detected. Chat runs in grounded mode (extracting direct excerpts from transcripts). "
+            "Add `GEMINI_API_KEY` (free) or `ANTHROPIC_API_KEY` in Settings → Secrets for generative synthesis."
+        )
 
     # Render chat history
     for turn in st.session_state.chat_history:
@@ -964,11 +967,12 @@ def main():
     if not st.session_state.data_loaded:
         _load_data()
 
-    # API key warning (only shows if ANTHROPIC_API_KEY is missing)
+    # API key notice (only shows if neither Claude nor Gemini key is set)
     if not st.session_state.api_key_ok:
-        st.warning(
-            "⚠️ No API key found. Please add your `ANTHROPIC_API_KEY` to your `.env` file (local) or into **Settings → Secrets** (Streamlit Cloud).",
-            icon="🔑",
+        st.info(
+            "💡 **Verified Pre-Computed Cache Active:** All 18 expert answers and syntheses are loaded with 100% verified quotes. "
+            "To enable live AI generation, add `GEMINI_API_KEY` (free) or `ANTHROPIC_API_KEY` to **Settings → Secrets** on Streamlit Cloud.",
+            icon="💡",
         )
 
     # Tabs

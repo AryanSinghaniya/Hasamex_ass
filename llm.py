@@ -30,10 +30,16 @@ try:
 except ImportError:
     anthropic = None
 
+try:
+    import requests
+except ImportError:
+    requests = None
+
 logger = logging.getLogger(__name__)
 
 # ── Config ──────────────────────────────────────────────────────────────────
 MODEL = "claude-sonnet-4-5-20250929"
+GEMINI_MODEL = "gemini-2.0-flash"
 CACHE_DIR = Path("cache")
 
 # Maximum number of transcript chunks to include in a single API call.
@@ -59,8 +65,23 @@ def _get_anthropic_key() -> Optional[str]:
     return key
 
 
+def _get_gemini_key() -> Optional[str]:
+    """Retrieve GEMINI_API_KEY from environment or Streamlit secrets."""
+    key = os.environ.get("GEMINI_API_KEY")
+    if not key:
+        try:
+            import streamlit as st
+            if "GEMINI_API_KEY" in st.secrets:
+                key = st.secrets["GEMINI_API_KEY"]
+                if key:
+                    os.environ["GEMINI_API_KEY"] = key
+        except Exception:
+            pass
+    return key
+
+
 def get_active_model_name() -> str:
-    """Return human-readable active model name derived directly from the MODEL constant."""
+    """Return human-readable active model name."""
     if _get_anthropic_key():
         import re
         m = re.match(r"claude-([a-z]+)-(\d+)-(\d+)", MODEL)
@@ -72,7 +93,9 @@ def get_active_model_name() -> str:
             major, minor, tier = m2.groups()
             return f"Claude {major}.{minor} {tier.capitalize()}"
         return MODEL.replace("-", " ").title()
-    return "No API Key Set"
+    elif _get_gemini_key():
+        return "Google Gemini 2.0 Flash (Free)"
+    return "Verified Pre-Cached (Claude Sonnet 4.5)"
 
 
 # ── Anthropic client (lazy-initialised) ─────────────────────────────────────
@@ -247,6 +270,85 @@ def _call_claude(system: str, user_message: str) -> str:
     )
     return response.content[0].text.strip()
 
+def _call_gemini(system: str, user_message: str) -> str:
+    """Call Google Gemini API with automatic retry on transient errors."""
+    api_key = _get_gemini_key()
+    if not api_key:
+        raise EnvironmentError("GEMINI_API_KEY is not set.")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={api_key}"
+    payload = {
+        "system_instruction": {"parts": [{"text": system}]},
+        "contents": [{"parts": [{"text": user_message}]}],
+        "generationConfig": {
+            "temperature": 0.0,
+            "maxOutputTokens": 2048,
+            "responseMimeType": "application/json",
+        },
+    }
+    for attempt in range(3):
+        try:
+            resp = requests.post(url, json=payload, timeout=35)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+            elif resp.status_code == 429:
+                time.sleep(2 * (attempt + 1))
+                continue
+            else:
+                logger.error("Gemini API error %s: %s", resp.status_code, resp.text[:200])
+                raise RuntimeError(f"Gemini API returned {resp.status_code}: {resp.text[:200]}")
+        except Exception as e:
+            if attempt == 2:
+                raise e
+            time.sleep(1)
+    return ""
+
+
+def _call_gemini_chat(system: str, messages: list[dict]) -> str:
+    """Call Google Gemini API for multi-turn chat."""
+    api_key = _get_gemini_key()
+    if not api_key:
+        raise EnvironmentError("GEMINI_API_KEY is not set.")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={api_key}"
+    contents = []
+    for m in messages:
+        role = "model" if m["role"] == "assistant" else "user"
+        contents.append({"role": role, "parts": [{"text": m["content"]}]})
+    payload = {
+        "system_instruction": {"parts": [{"text": system}]},
+        "contents": contents,
+        "generationConfig": {
+            "temperature": 0.0,
+            "maxOutputTokens": 2048,
+        },
+    }
+    for attempt in range(3):
+        try:
+            resp = requests.post(url, json=payload, timeout=35)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+            elif resp.status_code == 429:
+                time.sleep(2 * (attempt + 1))
+                continue
+            else:
+                raise RuntimeError(f"Gemini API returned {resp.status_code}")
+        except Exception as e:
+            if attempt == 2:
+                raise e
+            time.sleep(1)
+    return ""
+
+
+def _call_llm(system: str, user_message: str) -> str:
+    """Dispatch call to Claude if Anthropic key is set, else Gemini."""
+    if _get_anthropic_key():
+        return _call_claude(system, user_message)
+    elif _get_gemini_key():
+        return _call_gemini(system, user_message)
+    raise EnvironmentError("No API key set. Provide either ANTHROPIC_API_KEY or GEMINI_API_KEY.")
+
+
 def _parse_json_response(raw: str) -> dict:
     """
     Safely parse a JSON response from the model.
@@ -273,10 +375,10 @@ def _parse_json_response(raw: str) -> dict:
 
 def _call_claude_json(system: str, user_message: str) -> dict:
     """
-    Call Claude and parse JSON response. If JSON parsing fails on the first attempt,
+    Call LLM and parse JSON response. If JSON parsing fails on the first attempt,
     retry once with an explicit instruction appended before falling back to raw-text behavior.
     """
-    raw = _call_claude(system, user_message)
+    raw = _call_llm(system, user_message)
     result = _parse_json_response(raw)
     if result.get("parse_error"):
         logger.warning("JSON parse failed on first attempt. Retrying with explicit instruction.")
@@ -284,7 +386,7 @@ def _call_claude_json(system: str, user_message: str) -> dict:
             f"{user_message}\n\n"
             "Your previous response was not valid JSON. Return ONLY the JSON object, no other text."
         )
-        retry_raw = _call_claude(system, retry_message)
+        retry_raw = _call_llm(system, retry_message)
         retry_result = _parse_json_response(retry_raw)
         return retry_result
     return result
@@ -503,6 +605,12 @@ def ask_panel(
     if chat_history:
         messages.extend(chat_history[-6:])  # keep last 3 turns for context
     messages.append({"role": "user", "content": user_message})
+
+    if not _get_anthropic_key() and _get_gemini_key():
+        try:
+            return _call_gemini_chat(PANEL_CHAT_SYSTEM, messages)
+        except Exception as e:
+            logger.warning("Gemini chat API error: %s", e)
 
     try:
         client = _get_client()
