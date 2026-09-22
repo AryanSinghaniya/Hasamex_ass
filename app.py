@@ -30,6 +30,13 @@ from typing import Optional
 
 import streamlit as st
 
+# Sync Streamlit Community Cloud secrets into os.environ if available
+try:
+    if "ANTHROPIC_API_KEY" in st.secrets and not os.environ.get("ANTHROPIC_API_KEY"):
+        os.environ["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
+except Exception:
+    pass
+
 # ── Project modules ──────────────────────────────────────────────────────────
 import parser as transcript_parser
 import llm
@@ -299,8 +306,16 @@ def _init_session():
         st.session_state.syntheses = {}  # {q_index: synthesis_dict}
     if "data_loaded" not in st.session_state:
         st.session_state.data_loaded = False
-    # Re-evaluate api_key_ok from environment (.env)
-    st.session_state.api_key_ok = bool(os.environ.get("ANTHROPIC_API_KEY"))
+    # Re-evaluate api_key_ok from environment or Streamlit secrets
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    if not key:
+        try:
+            key = st.secrets.get("ANTHROPIC_API_KEY")
+            if key:
+                os.environ["ANTHROPIC_API_KEY"] = key
+        except Exception:
+            pass
+    st.session_state.api_key_ok = bool(key)
 
 
 # ── Data loading ──────────────────────────────────────────────────────────────
@@ -319,7 +334,7 @@ def _load_data(force: bool = False):
     name/role/market to stdout so identity bugs surface immediately in dev.
     """
     if not os.environ.get("ANTHROPIC_API_KEY"):
-        logger.info("ANTHROPIC_API_KEY not detected in .env file.")
+        logger.info("ANTHROPIC_API_KEY not detected.")
 
     with st.spinner("📂 Parsing transcripts…"):
         try:
@@ -941,10 +956,10 @@ def main():
     if not st.session_state.data_loaded:
         _load_data()
 
-    # API key warning (only shows if .env is missing ANTHROPIC_API_KEY)
+    # API key warning (only shows if missing ANTHROPIC_API_KEY)
     if not st.session_state.api_key_ok:
         st.warning(
-            "⚠️ No API key found in `.env`. Please add your `ANTHROPIC_API_KEY` to the `.env` file.",
+            "⚠️ No API key found. Please add your `ANTHROPIC_API_KEY` to your `.env` file (local) or into **Settings → Secrets** (Streamlit Cloud).",
             icon="🔑",
         )
 

@@ -44,9 +44,24 @@ MAX_CHUNKS_PER_CALL = 40
 RETRIEVAL_TOP_N = 8
 
 
+def _get_api_key() -> Optional[str]:
+    """Retrieve ANTHROPIC_API_KEY from environment or Streamlit secrets."""
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    if not key:
+        try:
+            import streamlit as st
+            if "ANTHROPIC_API_KEY" in st.secrets:
+                key = st.secrets["ANTHROPIC_API_KEY"]
+                if key:
+                    os.environ["ANTHROPIC_API_KEY"] = key
+        except Exception:
+            pass
+    return key
+
+
 def get_active_model_name() -> str:
     """Return human-readable active model name derived directly from the MODEL constant."""
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    if _get_api_key():
         import re
         m = re.match(r"claude-([a-z]+)-(\d+)-(\d+)", MODEL)
         if m:
@@ -70,10 +85,10 @@ def _get_client():
     if _client is None:
         if anthropic is None:
             raise ImportError("anthropic package is not installed.")
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        api_key = _get_api_key()
         if not api_key:
             raise EnvironmentError(
-                "ANTHROPIC_API_KEY environment variable is not set in .env."
+                "ANTHROPIC_API_KEY environment variable is not set."
             )
         _client = anthropic.Anthropic(api_key=api_key)
     return _client
