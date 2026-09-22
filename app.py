@@ -387,7 +387,14 @@ def _get_or_generate_answer(market: str, q_idx: int) -> Optional[dict]:
     transcript_text = transcript_parser.get_transcript_text(market)
 
     def _re_prompt(q, ch, en, bad_quote="", ungrounded_items=None):
-        return llm.re_prompt_exact_quote(q, ch, en, market, bad_quote, ungrounded_items)
+        return llm.re_prompt_exact_quote(
+            question=q,
+            chunks=ch,
+            expert_name=en,
+            market=market,
+            bad_quote=bad_quote,
+            ungrounded_items=ungrounded_items,
+        )
 
     verified = verify.verify_and_repair(
         answer_json=raw_answer,

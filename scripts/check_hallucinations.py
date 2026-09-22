@@ -12,6 +12,7 @@ import re
 import json
 import difflib
 import unicodedata
+import time
 from pathlib import Path
 from typing import Dict, List, Tuple, Any
 
@@ -356,7 +357,14 @@ def load_or_generate_all_answers(force_generate: bool = False) -> Dict[str, Dict
                     raw = grounded_answers[market][q_idx]
 
                 def _re_prompt(q, ch, en, bad_quote="", ungrounded_items=None):
-                    return llm.re_prompt_exact_quote(q, ch, en, market, bad_quote, ungrounded_items)
+                    return llm.re_prompt_exact_quote(
+                        question=q,
+                        chunks=ch,
+                        expert_name=en,
+                        market=market,
+                        bad_quote=bad_quote,
+                        ungrounded_items=ungrounded_items,
+                    )
 
                 ans_data = verify.verify_and_repair(
                     answer_json=raw,
@@ -369,6 +377,7 @@ def load_or_generate_all_answers(force_generate: bool = False) -> Dict[str, Dict
                 ans_data["expert_name"] = expert_name
                 ans_data["market"] = market
                 llm._save_cache(f"answer_{market}", key, ans_data)
+                time.sleep(1.5)
             else:
                 ans_data = grounded_answers[market][q_idx]
                 ans_data["expert_name"] = expert_name

@@ -144,19 +144,23 @@ Respond ONLY with a valid JSON object matching this schema:
 
 
 EXPERT_ANSWER_RETRY_SYSTEM = """\
-You are an expert market research analyst. Your previous response included a quote \
-that could NOT be found verbatim in the transcript.
+You are an expert market research analyst. Your previous response included a quote or factual claims \
+that could NOT be found in the transcript.
 
-You must fix this immediately.
+You must fix this immediately. Both the supporting_quote AND every fact, figure, and claim in the \
+answer paragraph must be strictly grounded in the provided transcript text, not just the quote.
 
 CRITICAL INSTRUCTIONS:
 1. The "supporting_quote" field MUST be an EXACT, CHARACTER-FOR-CHARACTER substring \
 copied directly from the provided transcript text.
-2. Do not change punctuation, do not fix spoken grammar, do not omit words.
-3. If you cannot find an exact verbatim quote to support the answer, set \
+2. The "answer" field MUST be strictly grounded: every fact, number, currency amount, \
+and proper noun in the answer paragraph must be explicitly stated in the transcript text. \
+Do NOT invent, extrapolate, or estimate figures.
+3. Do not change punctuation, do not fix spoken grammar, do not omit words in supporting_quote.
+4. If you cannot find an exact verbatim quote to support the answer, set \
 "answer" to "Not discussed in this transcript", "timestamp" to "", and \
 "supporting_quote" to "".
-4. Return ONLY valid JSON.
+5. Return ONLY valid JSON.
 
 Schema:
 {
@@ -249,6 +253,9 @@ def _call_groq(system: str, user_message: str, json_mode: bool = True) -> str:
                         sleep_s = (attempt + 1) * 3
                 else:
                     sleep_s = (attempt + 1) * 3
+                if sleep_s > 30:
+                    logger.warning("Groq rate limit retry-after too long (%.1fs); raising RateLimitError", sleep_s)
+                    raise RateLimitError(f"Groq rate limit exceeded. Retry after {int(sleep_s)}s.")
                 logger.warning("Groq rate limit 429 encountered, sleeping %.1fs...", sleep_s)
                 time.sleep(sleep_s)
                 continue
@@ -302,6 +309,8 @@ def _call_groq_chat(system: str, messages: list[dict]) -> str:
                         sleep_s = (attempt + 1) * 3
                 else:
                     sleep_s = (attempt + 1) * 3
+                if sleep_s > 30:
+                    raise RateLimitError(f"Groq rate limit exceeded. Retry after {int(sleep_s)}s.")
                 time.sleep(sleep_s)
                 continue
             else:
@@ -439,27 +448,34 @@ def re_prompt_exact_quote(
     Re-prompt Groq with explicit instructions if quote or answer grounding fails.
     """
     transcript_text = _format_chunks_as_text(chunks)
-    feedback_lines = []
     if bad_quote:
-        feedback_lines.append(
-            f"PREVIOUS UNVERIFIABLE QUOTE (could not be found verbatim in the transcript):\n\"{bad_quote}\"\n"
-            f"Provide a supporting_quote that is an exact, character-for-character substring of the transcript."
+        retry_msg = (
+            f"Your previous response included this quote which could NOT be found verbatim in the transcript:\n"
+            f"\"{bad_quote}\"\n\n"
+            f"Please provide a corrected answer with a supporting_quote that is a "
+            f"verbatim, unmodified substring of the transcript text above."
         )
-    if ungrounded_items:
-        items_str = ", ".join(f"'{it}'" for it in ungrounded_items)
-        feedback_lines.append(
-            f"Your previous answer included specific facts ({items_str}) that could not be found in the transcript. "
-            f"Rewrite your answer using ONLY information explicitly stated in the transcript — "
-            f"no numbers, names, or specific details unless they appear verbatim in the source text."
+    else:
+        retry_msg = (
+            f"Please provide a corrected answer with a supporting_quote that is a "
+            f"verbatim, unmodified substring of the transcript text above."
         )
 
-    feedback_str = "\n\n".join(feedback_lines)
     user_message = (
         f"TRANSCRIPT EXCERPT (Expert: {expert_name}, Market: {market}):\n\n"
         f"{transcript_text}\n\n"
         f"QUESTION:\n{question}\n\n"
-        f"{feedback_str}"
+        f"{retry_msg}"
     )
+
+    if ungrounded_items:
+        user_message += (
+            f"\n\nADDITIONALLY, your previous answer included these specific facts/figures that could "
+            f"NOT be found in the transcript: {', '.join(ungrounded_items)}. Your corrected answer "
+            f"must NOT include any of these or similar invented details — describe only what is "
+            f"explicitly stated in the transcript, in general terms if no specific figure was given."
+        )
+
     return _call_groq_json(EXPERT_ANSWER_RETRY_SYSTEM, user_message)
 
 
