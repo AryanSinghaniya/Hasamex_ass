@@ -1,13 +1,13 @@
 """
-llm.py — Anthropic API wrapper for Expert Interview Analyzer.
+llm.py — Google Gemini API wrapper for Expert Interview Analyzer.
 
-Provides three main operations:
-  1. get_expert_answer()  — per-expert Q&A with structured JSON output
+Provides four main operations:
+  1. get_expert_answer()     — per-expert Q&A with structured JSON output
   2. re_prompt_exact_quote() — retry with explicit "copy exactly" instruction
-  3. synthesize_question() — cross-expert synthesis for one question
-  4. ask_panel()          — free-form chat with chunk-based retrieval context
+  3. synthesize_question()   — cross-expert synthesis for one question
+  4. ask_panel()             — free-form chat with chunk-based retrieval context
 
-All calls use claude-sonnet-4-5.
+All calls use Google Gemini (gemini-flash-lite-latest) as the single provider.
 Disk caching prevents redundant API calls on UI re-runs.
 """
 
@@ -25,44 +25,24 @@ try:
 except ImportError:
     pass
 
-try:
-    import anthropic
-except ImportError:
-    anthropic = None
-
-try:
-    import requests
-except ImportError:
-    requests = None
+import requests
 
 logger = logging.getLogger(__name__)
 
 # ── Config ──────────────────────────────────────────────────────────────────
-MODEL = "claude-sonnet-4-5-20250929"
-GEMINI_MODEL = "gemini-3.6-flash"
+GEMINI_MODEL = "gemini-flash-lite-latest"
 CACHE_DIR = Path("cache")
 
 # Maximum number of transcript chunks to include in a single API call.
-# Keeps context windows manageable.
 MAX_CHUNKS_PER_CALL = 40
 
 # Number of top chunks to retrieve for the "Ask the Panel" feature.
 RETRIEVAL_TOP_N = 8
 
 
-def _get_anthropic_key() -> Optional[str]:
-    """Retrieve ANTHROPIC_API_KEY from environment or Streamlit secrets."""
-    key = os.environ.get("ANTHROPIC_API_KEY")
-    if not key:
-        try:
-            import streamlit as st
-            if "ANTHROPIC_API_KEY" in st.secrets:
-                key = st.secrets["ANTHROPIC_API_KEY"]
-                if key:
-                    os.environ["ANTHROPIC_API_KEY"] = key
-        except Exception:
-            pass
-    return key
+class RateLimitError(Exception):
+    """Raised when Gemini API rate limits (HTTP 429) are exhausted."""
+    pass
 
 
 def _get_gemini_key() -> Optional[str]:
@@ -81,52 +61,15 @@ def _get_gemini_key() -> Optional[str]:
 
 
 def get_active_model_name() -> str:
-    """Return human-readable active model name."""
-    if _get_anthropic_key():
-        import re
-        m = re.match(r"claude-([a-z]+)-(\d+)-(\d+)", MODEL)
-        if m:
-            tier, major, minor = m.groups()
-            return f"Claude {tier.capitalize()} {major}.{minor}"
-        m2 = re.match(r"claude-(\d+)-(\d+)-([a-z]+)", MODEL)
-        if m2:
-            major, minor, tier = m2.groups()
-            return f"Claude {major}.{minor} {tier.capitalize()}"
-        return MODEL.replace("-", " ").title()
-    elif _get_gemini_key():
-        return "Google Gemini 3.6 Flash (Free)"
-    return "Verified Pre-Cached (Claude Sonnet 4.5)"
-
-
-# ── Anthropic client (lazy-initialised) ─────────────────────────────────────
-
-_client: Optional[object] = None
-
-
-def _get_client():
-    global _client
-    if _client is None:
-        if anthropic is None:
-            raise ImportError("anthropic package is not installed.")
-        api_key = _get_anthropic_key()
-        if not api_key:
-            raise EnvironmentError(
-                "ANTHROPIC_API_KEY environment variable is not set."
-            )
-        _client = anthropic.Anthropic(api_key=api_key)
-    return _client
-
-
-def reset_client():
-    """Reset client instance so it re-initialises on next call."""
-    global _client
-    _client = None
+    """Return human-readable active model name derived directly from GEMINI_MODEL."""
+    clean_name = GEMINI_MODEL.replace("gemini-", "").replace("-", " ").title()
+    return f"Google Gemini {clean_name}"
 
 
 # ── Cache helpers ────────────────────────────────────────────────────────────
 
 def _cache_key(*parts: str) -> str:
-    combined = "v2_claude||" + "||".join(parts)
+    combined = "gemini_v3||" + "||".join(parts)
     return hashlib.md5(combined.encode()).hexdigest()[:16]
 
 
@@ -152,64 +95,70 @@ def _save_cache(prefix: str, key: str, data: dict) -> None:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
-# ── Prompt builders ──────────────────────────────────────────────────────────
+# ── Transcript formatting ───────────────────────────────────────────────────
 
-def _format_chunks_as_text(chunks: list[dict]) -> str:
-    """Convert transcript chunks to a readable text block for the prompt."""
+def _format_chunks_as_text(chunks: list[dict], max_chunks: int = MAX_CHUNKS_PER_CALL) -> str:
+    """
+    Format chunk dicts into a clean dialogue string for the prompt.
+    Labels each turn with [Speaker | Timestamp].
+    """
     lines = []
-    for c in chunks[:MAX_CHUNKS_PER_CALL]:
-        lines.append(f"[{c['timestamp']}] {c['speaker']}: {c['text']}")
+    for c in chunks[:max_chunks]:
+        speaker = c.get("speaker", "Unknown")
+        ts = c.get("timestamp", "00:00")
+        text = c.get("text", "").strip()
+        lines.append(f"[{speaker} | {ts}]\n{text}")
     return "\n\n".join(lines)
 
 
+# ── Prompts ──────────────────────────────────────────────────────────────────
+
 EXPERT_ANSWER_SYSTEM = """\
-You are a rigorous market research analyst. You are given an excerpt from an \
-expert interview transcript. Your task is to answer a specific interview guide \
-question using ONLY the information present in the provided transcript.
+You are an expert market research analyst analysing interview transcripts about \
+robotic surgery. Your task is to answer questions about what a specific expert said, \
+relying STRICTLY AND ENTIRELY on the provided transcript excerpt.
 
-STRICT RULES — you must follow these exactly:
-1. Base your answer SOLELY on the transcript text provided. Do NOT use any \
-outside knowledge, general industry knowledge, or information not explicitly \
-stated in the transcript.
-2. After giving your answer, cite the timestamp of the most relevant turn(s) \
-in the format MM:SS (e.g. "01:23"). If multiple timestamps are relevant, \
-list the most important one as the primary citation.
-3. Include a supporting_quote: copy a verbatim sentence or phrase directly \
-from the transcript that best supports your answer. Copy it EXACTLY as it \
-appears — do not paraphrase, do not add or remove words.
-4. If the transcript does not address the question at all, set answer to \
-exactly: "Not discussed in this transcript" and leave timestamp and \
-supporting_quote empty strings.
+CRITICAL INSTRUCTIONS — ZERO HALLUCINATION POLICY:
+1. Base your answer ONLY on facts, opinions, and figures explicitly stated in the \
+provided transcript excerpt. Do NOT infer, extrapolate, or use outside knowledge.
+2. If the expert did NOT discuss or mention the topic, you MUST respond with:
+   "Not discussed in this transcript" for the answer field, leave timestamp empty, \
+and leave supporting_quote empty. Do NOT invent an answer.
+3. When the expert DID discuss the topic:
+   a. "answer": Write a clear, concise synthesis of what they said (2-4 sentences).
+   b. "timestamp": Give the MM:SS timestamp from the transcript turn where they \
+said this most directly.
+   c. "supporting_quote": Provide a VERBATIM, EXACT quote from the transcript text \
+that supports the answer. Do NOT edit, paraphrase, fix grammar, or change even one word. \
+It must be a precise substring of the transcript text.
+4. Do NOT fabricate numbers, prices, percentages, adoption rates, timelines, or names.
 
-Respond ONLY with a valid JSON object matching this schema exactly:
+Respond ONLY with a valid JSON object matching this schema:
 {
-  "answer": "<your answer based only on the transcript>",
-  "timestamp": "<MM:SS of most relevant turn, or empty string>",
-  "supporting_quote": "<exact verbatim quote from the transcript, or empty string>"
-}
-
-Do not include any text outside the JSON object."""
+  "answer": "<your synthesis, or 'Not discussed in this transcript'>",
+  "timestamp": "<MM:SS or empty string>",
+  "supporting_quote": "<verbatim substring of transcript, or empty string>"
+}"""
 
 
 EXPERT_ANSWER_RETRY_SYSTEM = """\
-You are a rigorous market research analyst. A previous attempt to extract a \
-supporting quote from this transcript produced a quote that could not be \
-verified as appearing verbatim in the transcript.
+You are an expert market research analyst. Your previous response included a quote \
+that could NOT be found verbatim in the transcript.
 
-Your task: provide a corrected answer with a supporting_quote that is copied \
-EXACTLY, CHARACTER FOR CHARACTER, from the transcript text provided. \
-Do not alter punctuation, capitalisation, or wording in any way.
+You must fix this immediately.
 
-STRICT RULES:
-1. Answer using ONLY the transcript provided — no outside knowledge.
-2. The supporting_quote must be a continuous verbatim substring of the transcript text.
-3. Cite the timestamp of the most relevant turn.
-4. If the transcript does not address the question, set answer to \
-"Not discussed in this transcript".
+CRITICAL INSTRUCTIONS:
+1. The "supporting_quote" field MUST be an EXACT, CHARACTER-FOR-CHARACTER substring \
+copied directly from the provided transcript text.
+2. Do not change punctuation, do not fix spoken grammar, do not omit words.
+3. If you cannot find an exact verbatim quote to support the answer, set \
+"answer" to "Not discussed in this transcript", "timestamp" to "", and \
+"supporting_quote" to "".
+4. Return ONLY valid JSON.
 
-Respond ONLY with a valid JSON object:
+Schema:
 {
-  "answer": "<answer based only on transcript>",
+  "answer": "<synthesis or 'Not discussed in this transcript'>",
   "timestamp": "<MM:SS or empty string>",
   "supporting_quote": "<verbatim substring of transcript, or empty string>"
 }"""
@@ -224,7 +173,7 @@ three market experts (France, Germany, UK). Your task is to write a synthesis th
 
 1. Identifies COMMON THEMES and POINTS OF AGREEMENT across experts. \
 Every claim must attribute which expert(s) said it, using their name and market \
-in parentheses, e.g. "(Dr. Marchand, France)".
+in parentheses, e.g. "(Dr. Jean Martin, France)".
 2. Identifies DISAGREEMENTS or DIFFERENCES IN EMPHASIS — where experts' views \
 diverge or where emphasis varies by market. Again, attribute every claim.
 3. Is structured with clearly labelled sections: \
@@ -257,24 +206,15 @@ respond with: "This isn't covered in the transcripts provided."
 Respond in clear, structured prose."""
 
 
-# ── Core API functions ───────────────────────────────────────────────────────
-
-def _call_claude(system: str, user_message: str) -> str:
-    """Make a single Claude API call and return the text response."""
-    client = _get_client()
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=1024,
-        system=system,
-        messages=[{"role": "user", "content": user_message}],
-    )
-    return response.content[0].text.strip()
+# ── Core Gemini API functions ───────────────────────────────────────────────
 
 def _call_gemini(system: str, user_message: str) -> str:
     """Call Google Gemini API with automatic retry on transient errors."""
     api_key = _get_gemini_key()
     if not api_key:
-        raise EnvironmentError("GEMINI_API_KEY is not set.")
+        raise EnvironmentError(
+            "GEMINI_API_KEY is not set. Please set it in .env or Streamlit Cloud Secrets."
+        )
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={api_key}"
     payload = {
         "system_instruction": {"parts": [{"text": system}]},
@@ -296,18 +236,23 @@ def _call_gemini(system: str, user_message: str) -> str:
                 continue
             else:
                 logger.error("Gemini API error %s: %s", resp.status_code, resp.text[:200])
+                raise RuntimeError(f"Gemini API returned {resp.status_code}: {resp.text[:200]}")
         except Exception as e:
             if attempt == 2:
+                if "429" in str(e) or (hasattr(e, "response") and getattr(e.response, "status_code", None) == 429):
+                    raise RateLimitError("Gemini rate limit exceeded.")
                 raise e
-            time.sleep(2)
-    raise RuntimeError("Gemini API quota/rate limit exceeded. Please wait a few seconds or use pre-cached verified answers.")
+            time.sleep(1)
+    raise RateLimitError("Gemini API rate limit exceeded after retries.")
 
 
 def _call_gemini_chat(system: str, messages: list[dict]) -> str:
     """Call Google Gemini API for multi-turn chat."""
     api_key = _get_gemini_key()
     if not api_key:
-        raise EnvironmentError("GEMINI_API_KEY is not set.")
+        raise EnvironmentError(
+            "GEMINI_API_KEY is not set. Please set it in .env or Streamlit Cloud Secrets."
+        )
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={api_key}"
     contents = []
     for m in messages:
@@ -331,27 +276,14 @@ def _call_gemini_chat(system: str, messages: list[dict]) -> str:
                 time.sleep(2 * (attempt + 1))
                 continue
             else:
-                raise RuntimeError(f"Gemini API returned {resp.status_code}")
+                raise RuntimeError(f"Gemini API returned {resp.status_code}: {resp.text[:200]}")
         except Exception as e:
             if attempt == 2:
+                if "429" in str(e) or (hasattr(e, "response") and getattr(e.response, "status_code", None) == 429):
+                    raise RateLimitError("Gemini rate limit exceeded.")
                 raise e
             time.sleep(1)
-    return ""
-
-
-def _call_llm(system: str, user_message: str) -> str:
-    """Dispatch call to Claude if Anthropic key is set and working, else Gemini."""
-    if _get_anthropic_key():
-        try:
-            return _call_claude(system, user_message)
-        except Exception as e:
-            if _get_gemini_key():
-                logger.warning("Claude API failed (%s); falling back to Gemini.", e)
-                return _call_gemini(system, user_message)
-            raise e
-    elif _get_gemini_key():
-        return _call_gemini(system, user_message)
-    raise EnvironmentError("No API key set. Provide either ANTHROPIC_API_KEY or GEMINI_API_KEY.")
+    raise RateLimitError("Gemini API rate limit exceeded after retries.")
 
 
 def _parse_json_response(raw: str) -> dict:
@@ -359,11 +291,9 @@ def _parse_json_response(raw: str) -> dict:
     Safely parse a JSON response from the model.
     Handles markdown code fences the model might accidentally include.
     """
-    # Strip markdown code fences if present
     text = raw.strip()
     if text.startswith("```"):
         lines = text.splitlines()
-        # Remove first and last fence lines
         inner = [l for l in lines[1:] if l.strip() != "```"]
         text = "\n".join(inner)
     try:
@@ -378,22 +308,52 @@ def _parse_json_response(raw: str) -> dict:
         }
 
 
-def _call_claude_json(system: str, user_message: str) -> dict:
+def _call_gemini_json(system: str, user_message: str) -> dict:
     """
-    Call LLM and parse JSON response. If JSON parsing fails on the first attempt,
-    retry once with an explicit instruction appended before falling back to raw-text behavior.
+    Call Gemini and parse JSON response. If JSON parsing fails on the first attempt,
+    retry ONCE with an explicit instruction appended before falling back to raw-text behavior.
+    If 429 rate limit is hit, returns dict with rate_limited=True.
     """
-    raw = _call_llm(system, user_message)
+    try:
+        raw = _call_gemini(system, user_message)
+    except RateLimitError:
+        return {
+            "answer": "Gemini free tier rate limit reached. Please wait a moment and retry.",
+            "timestamp": "",
+            "supporting_quote": "",
+            "rate_limited": True,
+        }
+    except Exception as e:
+        logger.error("Gemini API call failed: %s", e)
+        return {
+            "answer": f"Error calling Gemini API: {e}",
+            "timestamp": "",
+            "supporting_quote": "",
+            "error": True,
+        }
+
     result = _parse_json_response(raw)
     if result.get("parse_error"):
         logger.warning("JSON parse failed on first attempt. Retrying with explicit instruction.")
         retry_message = (
             f"{user_message}\n\n"
-            "Your previous response was not valid JSON. Return ONLY the JSON object, no other text."
+            "Your previous response was not valid JSON. Return ONLY the JSON object matching the schema, "
+            "with no markdown formatting, no preamble, no explanation."
         )
-        retry_raw = _call_llm(system, retry_message)
-        retry_result = _parse_json_response(retry_raw)
-        return retry_result
+        try:
+            retry_raw = _call_gemini(system, retry_message)
+            retry_result = _parse_json_response(retry_raw)
+            return retry_result
+        except RateLimitError:
+            return {
+                "answer": "Gemini free tier rate limit reached. Please wait a moment and retry.",
+                "timestamp": "",
+                "supporting_quote": "",
+                "rate_limited": True,
+            }
+        except Exception as e:
+            logger.error("Retry also failed: %s", e)
+            return result
     return result
 
 
@@ -431,9 +391,10 @@ def get_expert_answer(
         f"QUESTION:\n{question}"
     )
 
-    result = _call_claude_json(EXPERT_ANSWER_SYSTEM, user_message)
+    result = _call_gemini_json(EXPERT_ANSWER_SYSTEM, user_message)
 
-    _save_cache(prefix, key, result)
+    if not result.get("rate_limited") and not result.get("error"):
+        _save_cache(prefix, key, result)
     return result
 
 
@@ -445,7 +406,7 @@ def re_prompt_exact_quote(
     bad_quote: str,
 ) -> dict:
     """
-    Re-prompt the model with an explicit instruction to copy the quote exactly.
+    Re-prompt Gemini with an explicit instruction to copy the quote exactly.
     Called by verify.py when the first attempt's quote fails verification.
 
     Returns dict: {answer, timestamp, supporting_quote}
@@ -460,7 +421,7 @@ def re_prompt_exact_quote(
         f"Please provide a corrected answer with a supporting_quote that is a "
         f"verbatim, unmodified substring of the transcript text above."
     )
-    return _call_claude_json(EXPERT_ANSWER_RETRY_SYSTEM, user_message)
+    return _call_gemini_json(EXPERT_ANSWER_RETRY_SYSTEM, user_message)
 
 
 def synthesize_question(
@@ -469,7 +430,7 @@ def synthesize_question(
     force: bool = False,
 ) -> dict:
     """
-    Generate a cross-expert synthesis for one interview question.
+    Generate a cross-expert synthesis for one interview question using Gemini.
 
     Args:
         question:       The interview guide question text.
@@ -480,7 +441,6 @@ def synthesize_question(
         dict: {common_themes, disagreements, summary_line}
     """
     q_hash = hashlib.md5(question.encode()).hexdigest()[:8]
-    # Include a hash of the answers content to invalidate if answers change
     answers_str = json.dumps(expert_answers, sort_keys=True)
     a_hash = hashlib.md5(answers_str.encode()).hexdigest()[:8]
     key = _cache_key(q_hash, a_hash)
@@ -491,7 +451,6 @@ def synthesize_question(
         if cached:
             return cached
 
-    # Build a readable summary of each expert's answer
     answers_block = []
     for market, ans in expert_answers.items():
         expert = ans.get("expert_name", market)
@@ -511,9 +470,10 @@ def synthesize_question(
         + "\n\n".join(answers_block)
     )
 
-    result = _call_claude_json(SYNTHESIS_SYSTEM, user_message)
+    result = _call_gemini_json(SYNTHESIS_SYSTEM, user_message)
 
-    _save_cache(prefix, key, result)
+    if not result.get("rate_limited") and not result.get("error"):
+        _save_cache(prefix, key, result)
     return result
 
 
@@ -537,11 +497,7 @@ def retrieve_chunks(
     """
     Keyword-based retrieval: score all chunks across all experts against
     the query and return the top_n by score.
-
-    This simulates the retrieval step you'd use with embeddings at scale.
-    Only chunks with at least one keyword match are returned.
     """
-    # Tokenise query into meaningful words (≥3 chars, not stop words)
     stop_words = {
         "the", "and", "for", "are", "was", "you", "that", "this", "what",
         "how", "why", "did", "does", "can", "will", "with", "from", "have",
@@ -561,7 +517,6 @@ def retrieve_chunks(
             if score > 0:
                 scored.append((score, chunk))
 
-    # Sort by score descending, break ties by chunk_index (prefer earlier)
     scored.sort(key=lambda x: (-x[0], x[1].get("chunk_index", 0)))
     return [c for _, c in scored[:top_n]]
 
@@ -573,14 +528,7 @@ def ask_panel(
 ) -> str:
     """
     Answer a free-form question using only keyword-retrieved transcript chunks.
-
-    Args:
-        query:          The user's question.
-        all_chunks:     {market: [chunks]} for all three experts.
-        chat_history:   Optional list of {role, content} for conversational context.
-
-    Returns:
-        The model's answer string (with inline citations).
+    Uses Gemini as the single provider.
     """
     retrieved = retrieve_chunks(query, all_chunks)
 
@@ -590,7 +538,6 @@ def ask_panel(
             "No relevant chunks were found matching your query."
         )
 
-    # Format retrieved chunks
     context_lines = []
     for c in retrieved:
         context_lines.append(
@@ -605,36 +552,18 @@ def ask_panel(
         f"USER QUESTION: {query}"
     )
 
-    # Build messages list (supports multi-turn)
     messages = []
     if chat_history:
-        messages.extend(chat_history[-6:])  # keep last 3 turns for context
+        messages.extend(chat_history[-6:])
     messages.append({"role": "user", "content": user_message})
 
-    if not _get_anthropic_key() and _get_gemini_key():
-        try:
-            return _call_gemini_chat(PANEL_CHAT_SYSTEM, messages)
-        except Exception as e:
-            logger.warning("Gemini chat API error: %s", e)
-
     try:
-        client = _get_client()
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=1024,
-            system=PANEL_CHAT_SYSTEM,
-            messages=messages,
-        )
-        return response.content[0].text.strip()
+        return _call_gemini_chat(PANEL_CHAT_SYSTEM, messages)
+    except RateLimitError:
+        return "⚠️ Gemini free tier rate limit reached. Please wait a moment and retry."
     except Exception as e:
-        logger.warning("Claude API unavailable (%s); presenting grounded excerpts.", e)
-        lines = [
-            "**Transcripts Findings:**\n",
-            "Based on the relevant excerpts retrieved from the transcripts:\n"
-        ]
-        for c in retrieved[:3]:
-            lines.append(f"- **{c['expert_name']}** ({c['market']}, {c['timestamp']}): \"{c['text']}\"\n")
-        return "\n".join(lines)
+        logger.error("Gemini panel chat error: %s", e)
+        return f"Error contacting Gemini: {e}"
 
 
 def get_retrieved_chunks_for_display(

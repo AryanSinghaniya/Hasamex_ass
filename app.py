@@ -3,7 +3,7 @@ app.py — Expert Interview Analyzer — Main Streamlit Application.
 
 Architecture overview:
   - parser.py   : Reads .txt transcripts → structured JSON chunks
-  - llm.py      : Anthropic claude-sonnet-4-5 calls (answers, synthesis, chat)
+  - llm.py      : Google Gemini calls (answers, synthesis, chat)
   - verify.py   : Programmatic quote verification (anti-hallucination)
   - app.py      : Streamlit UI (this file)
 
@@ -13,7 +13,7 @@ Tabs:
   3. Ask the Panel (free-form retrieval-based chat)
 """
 
-# Load .env file if present — allows setting ANTHROPIC_API_KEY via a .env file
+# Load .env file if present — allows setting GEMINI_API_KEY via a .env file
 # without manually exporting env vars each session.
 try:
     from dotenv import load_dotenv
@@ -32,8 +32,6 @@ import streamlit as st
 
 # Sync Streamlit Community Cloud secrets into os.environ if available
 try:
-    if "ANTHROPIC_API_KEY" in st.secrets and not os.environ.get("ANTHROPIC_API_KEY"):
-        os.environ["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
     if "GEMINI_API_KEY" in st.secrets and not os.environ.get("GEMINI_API_KEY"):
         os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
 except Exception:
@@ -309,14 +307,11 @@ def _init_session():
     if "data_loaded" not in st.session_state:
         st.session_state.data_loaded = False
     # Re-evaluate api_key_ok from environment or Streamlit secrets
-    has_key = bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("GEMINI_API_KEY"))
+    has_key = bool(os.environ.get("GEMINI_API_KEY"))
     if not has_key:
         try:
-            if "ANTHROPIC_API_KEY" in st.secrets:
-                has_key = True
-                os.environ["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
-            elif "GEMINI_API_KEY" in st.secrets:
-                has_key = True
+            has_key = bool(st.secrets.get("GEMINI_API_KEY"))
+            if has_key:
                 os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
         except Exception:
             pass
@@ -338,8 +333,8 @@ def _load_data(force: bool = False):
     On first load, calls log_all_headers() which prints the parsed expert
     name/role/market to stdout so identity bugs surface immediately in dev.
     """
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        logger.info("ANTHROPIC_API_KEY not detected.")
+    if not os.environ.get("GEMINI_API_KEY"):
+        logger.info("GEMINI_API_KEY not detected.")
 
     with st.spinner("📂 Parsing transcripts…"):
         try:
@@ -382,6 +377,11 @@ def _get_or_generate_answer(market: str, q_idx: int) -> Optional[dict]:
         market=market,
         file_hash=file_hash,
     )
+
+    if raw_answer.get("rate_limited") or raw_answer.get("error"):
+        raw_answer["expert_name"] = expert_name
+        raw_answer["market"] = market
+        return raw_answer
 
     # ── Quote verification ──────────────────────────────────────────────
     transcript_text = transcript_parser.get_transcript_text(market)
@@ -434,6 +434,10 @@ def _render_answer_card(answer: dict, q_idx: int, q_text: str):
     """Render a single Q&A card with citation, verified quote, and transcript expander."""
     if not answer:
         st.markdown('<div class="not-discussed">⚪ Answer not yet generated</div>', unsafe_allow_html=True)
+        return
+
+    if answer.get("rate_limited"):
+        st.warning("⚠️ Gemini free tier rate limit hit — wait a moment and retry.")
         return
 
     is_not_discussed = answer.get("not_discussed", False) or (
@@ -635,7 +639,7 @@ def _render_sidebar():
         st.caption(f"Chat turns: **{len(st.session_state.chat_history)}**")
 
         st.markdown("---")
-        st.caption(f"Model: `{llm.MODEL}`")
+        st.caption(f"Model: `{llm.GEMINI_MODEL}`")
         st.caption("Anti-hallucination: difflib ≥ 0.85")
 
 
@@ -682,7 +686,7 @@ def _render_expert_tab(market: str):
     if answer:
         _render_answer_card(answer, selected_q, questions[selected_q])
     elif not st.session_state.api_key_ok:
-        st.warning("Please configure your `GEMINI_API_KEY` (free) or `ANTHROPIC_API_KEY` in `.env` or Streamlit Cloud Secrets to generate answers.")
+        st.warning("Please configure your `GEMINI_API_KEY` in `.env` or Streamlit Cloud Secrets to generate answers.")
     else:
         st.error("Could not generate answer.")
 
@@ -839,10 +843,8 @@ def _render_chat_tab():
         return
 
     if not st.session_state.api_key_ok:
-        st.info(
-            "💡 Live AI key not detected. Chat runs in grounded mode (extracting direct excerpts from transcripts). "
-            "Add `GEMINI_API_KEY` (free) or `ANTHROPIC_API_KEY` in Settings → Secrets for generative synthesis."
-        )
+        st.warning("Please configure your `GEMINI_API_KEY` in `.env` or Streamlit Cloud Secrets to use the chat.")
+        return
 
     # Render chat history
     for turn in st.session_state.chat_history:
@@ -967,12 +969,11 @@ def main():
     if not st.session_state.data_loaded:
         _load_data()
 
-    # API key notice (only shows if neither Claude nor Gemini key is set)
+    # API key warning (only shows if GEMINI_API_KEY is missing)
     if not st.session_state.api_key_ok:
-        st.info(
-            "💡 **Verified Pre-Computed Cache Active:** All 18 expert answers and syntheses are loaded with 100% verified quotes. "
-            "To enable live AI generation, add `GEMINI_API_KEY` (free) or `ANTHROPIC_API_KEY` to **Settings → Secrets** on Streamlit Cloud.",
-            icon="💡",
+        st.warning(
+            "⚠️ No API key found. Please add your `GEMINI_API_KEY` to your `.env` file (local) or into **Settings → Secrets** (Streamlit Cloud).",
+            icon="🔑",
         )
 
     # Tabs

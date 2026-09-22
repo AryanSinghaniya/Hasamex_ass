@@ -12,7 +12,7 @@ Tests cover:
   5. Cache invalidation -- changing transcript hash triggers re-parse
   6. Retrieval grounding -- out-of-scope queries return the "not covered" response
 
-These tests do NOT call the Anthropic API.
+These tests do NOT call any external API.
 """
 
 import os

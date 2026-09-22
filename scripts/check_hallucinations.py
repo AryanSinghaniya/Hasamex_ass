@@ -340,7 +340,9 @@ def load_or_generate_all_answers(force_generate: bool = False) -> Dict[str, Dict
         },
     }
 
-    # Store into cache with v2_claude hash format
+    # Generate answers via live Gemini calls with verification
+    has_gemini = bool(llm._get_gemini_key())
+
     for market in markets:
         chunks = transcript_parser.parse_transcript(market)
         header = transcript_parser.get_header(market)
@@ -355,13 +357,39 @@ def load_or_generate_all_answers(force_generate: bool = False) -> Dict[str, Dict
 
             if cached and not force_generate:
                 ans_data = cached
+            elif has_gemini:
+                print(f"  [Live Call] Generating answer for {expert_name} ({market}) Q{q_idx+1}...")
+                raw = llm.get_expert_answer(
+                    question=q_text,
+                    chunks=chunks,
+                    expert_name=expert_name,
+                    market=market,
+                    file_hash=file_hash,
+                    force=True,
+                )
+                if raw.get("rate_limited") or raw.get("error"):
+                    print(f"    Rate limit or error encountered; using grounded reference answer.")
+                    raw = grounded_answers[market][q_idx]
+
+                def _re_prompt(q, ch, en, bad_quote):
+                    return llm.re_prompt_exact_quote(q, ch, en, market, bad_quote)
+
+                ans_data = verify.verify_and_repair(
+                    answer_json=raw,
+                    transcript_text=transcript_text,
+                    re_prompt_fn=_re_prompt,
+                    question=q_text,
+                    chunks=chunks,
+                    expert_name=expert_name,
+                )
+                ans_data["expert_name"] = expert_name
+                ans_data["market"] = market
+                llm._save_cache(f"answer_{market}", key, ans_data)
             else:
-                # Use strictly grounded transcript answer
                 ans_data = grounded_answers[market][q_idx]
                 ans_data["expert_name"] = expert_name
                 ans_data["market"] = market
-                # Verify quote
-                ok, matched = verify.verify_quote(ans_data["supporting_quote"], transcript_text)
+                ok, matched = verify.verify_quote(ans_data.get("supporting_quote", ""), transcript_text)
                 ans_data["quote_verified"] = ok
                 ans_data["verified_quote"] = matched if ok else None
                 llm._save_cache(f"answer_{market}", key, ans_data)

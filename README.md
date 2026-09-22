@@ -2,7 +2,7 @@
 
 A Streamlit application for analyzing expert interview transcripts in a
 robotic-surgery market research context. The app parses three transcripts
-(France, Germany, UK), generates structured Q&A answers using the Anthropic
+(France, Germany, UK), generates structured Q&A answers using the Google Gemini
 API, verifies every quote programmatically, and provides cross-expert synthesis
 and a free-form retrieval-based chat interface.
 
@@ -20,12 +20,12 @@ pip install -r requirements.txt
 
 **PowerShell (Windows):**
 ```powershell
-$env:ANTHROPIC_API_KEY = "sk-ant-your-key-here"
+$env:GEMINI_API_KEY = "your-gemini-api-key-here"
 ```
 
 **Bash / macOS / Linux:**
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-your-key-here"
+export GEMINI_API_KEY="your-gemini-api-key-here"
 ```
 
 Or copy `.env.example` to `.env` and fill in your key. The `python-dotenv`
@@ -40,7 +40,7 @@ streamlit run app.py
 The app will open at `http://localhost:8501`.
 
 > **Note on Cache Management:**
-> Whenever you change the LLM model or provider, always clear the cache by running:
+> Whenever you change the LLM model or prompt configuration, always clear the cache by running:
 > ```bash
 > rm -rf cache/*      # Linux / macOS / Git Bash
 > Remove-Item -Path 'cache\*' -Force -Recurse   # PowerShell (Windows)
@@ -55,7 +55,7 @@ The app will open at `http://localhost:8501`.
 Hasamex_ass/
 ├── app.py           # Main Streamlit entry point — UI rendering
 ├── parser.py        # Transcript parsing: .txt → structured JSON chunks
-├── llm.py           # Anthropic API wrapper — answers, synthesis, chat
+├── llm.py           # Google Gemini API wrapper — answers, synthesis, chat
 ├── verify.py        # Quote verification (anti-hallucination)
 ├── tests.py         # Full unit test suite (24 tests)
 ├── requirements.txt
@@ -85,7 +85,7 @@ Hasamex_ass/
 parser.py  ──► cache/parsed_<market>.json
    │               (structured chunks)
    ▼
-llm.py  ──────► Anthropic API (claude-sonnet-4-5)
+llm.py  ──────► Google Gemini API (gemini-flash-lite-latest)
    │                │
    │                ▼
    │          raw answer JSON
@@ -108,7 +108,7 @@ verify.py  ──► programmatic quote check
 | Module | Responsibility |
 |--------|----------------|
 | `parser.py` | Reads `.txt` files; splits header (expert name, role, market) from timestamped body; returns list of `{expert_name, market, timestamp, speaker, text, chunk_index}` dicts; caches to `cache/parsed_<market>.json` |
-| `llm.py` | Wraps Anthropic `messages.create()`; provides `get_expert_answer()`, `re_prompt_exact_quote()`, `synthesize_question()`, `ask_panel()`, and `retrieve_chunks()`. All answers disk-cached. |
+| `llm.py` | Calls Google Gemini REST API (`gemini-flash-lite-latest`); provides `get_expert_answer()`, `re_prompt_exact_quote()`, `synthesize_question()`, `ask_panel()`, and `retrieve_chunks()`. All answers disk-cached. |
 | `verify.py` | `verify_quote()` checks substring presence using exact normalised match then `difflib.SequenceMatcher` (threshold 0.85). `verify_and_repair()` orchestrates the re-prompt flow. |
 | `app.py` | Streamlit UI: sidebar file status, per-expert tabs, Themes & Disagreements tab, Ask the Panel chat. |
 
@@ -116,22 +116,16 @@ verify.py  ──► programmatic quote check
 
 ## Model Choice Rationale
 
-**Model:** `claude-sonnet-4-5-20250929` (Anthropic Claude Sonnet 4.5)
+**Model:** `gemini-flash-lite-latest` (Google Gemini Flash-Lite)
 
-Claude Sonnet 4.5 was chosen for the following reasons:
+Google Gemini was chosen as the single LLM provider for this project for the following reasons:
 
-1. **Instruction following**: Claude models reliably follow complex, multi-part
-   system prompts — critical for enforcing the "no outside knowledge, cite
-   timestamps, return JSON" contract.
-2. **JSON output reliability**: Claude Sonnet 4.5 consistently returns
-   well-formed JSON when instructed to do so, minimising parse failures.
-3. **Context window**: The model's large context window comfortably holds a
-   full interview transcript (~10 minutes of dialogue) plus a question, leaving
-   room for a detailed answer.
-4. **Cost/quality balance**: Sonnet sits between Haiku (cheaper, less reliable
-   on complex instructions) and Opus (more expensive, not needed here). For a
-   production market research tool with 18+ API calls per session, Sonnet
-   provides the right tradeoff.
+1. **Genuine Free Tier**: For this project and live evaluation demos, Google Gemini provides a generous free tier via Google AI Studio without credit card paywalls or upfront costs.
+2. **Native JSON Schema Output**: Gemini's native `responseMimeType: "application/json"` reliably generates structured JSON objects containing `answer`, `timestamp`, and `supporting_quote`, preventing formatting drift.
+3. **Low Latency**: Gemini Flash-Lite delivers rapid sub-second responses, keeping the interactive dashboard fast and responsive during cross-transcript queries.
+4. **Data Usage Review**: Free-tier data usage terms were reviewed and accepted for this evaluation project using public interview transcripts.
+
+> **Changelog Note on Model Switch:** The codebase was previously evaluated with Claude Sonnet 4.5. It was intentionally consolidated to Google Gemini as the single clean provider to eliminate dual-provider complexity and enable completely free live evaluation.
 
 ---
 
@@ -282,8 +276,8 @@ number of experts. The MAP phase is fully parallelisable with `asyncio` or a
 ### 4. Async API Calls
 
 At 30 transcripts × 6 questions = 180 answer calls, sequential execution
-would take ~10 minutes. Switch `llm.py` to use `anthropic.AsyncAnthropic` and
-`asyncio.gather()` to parallelise, reducing wall time to ~30 seconds.
+would take ~10 minutes. Switch `llm.py` to use asynchronous requests (e.g. `httpx` or
+`aiohttp`) and `asyncio.gather()` to parallelise, reducing wall time to ~30 seconds.
 
 ### 5. Persistent Cache
 
@@ -328,11 +322,11 @@ The 6 questions mapped from `data/Interview_Guide.txt`:
 When deploying to [Streamlit Community Cloud](https://streamlit.io/cloud):
 1. Fork or push this repository to GitHub.
 2. Create a new app pointing to `app.py`.
-3. Under **App Settings → Secrets**, add your Anthropic API key in TOML format:
+3. Under **App Settings → Secrets**, add your Gemini API key in TOML format:
    ```toml
-   ANTHROPIC_API_KEY = "sk-ant-your-key-here"
+   GEMINI_API_KEY = "your-gemini-api-key-here"
    ```
-4. Save the secret. The app will automatically initialize and load Claude Sonnet 4.5.
+4. Save the secret. The app will automatically initialize and load Google Gemini.
 5. If changing model versions, use **Manage app → ⋮ → Reboot app** to flush the container's ephemeral cache.
 
 ---
@@ -341,7 +335,7 @@ When deploying to [Streamlit Community Cloud](https://streamlit.io/cloud):
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `ANTHROPIC_API_KEY` | Yes (for LLM features) | Anthropic API key. Get one at console.anthropic.com |
+| `GEMINI_API_KEY` | Yes (for LLM features) | Google Gemini API key. Get one for free at aistudio.google.com |
 
 ---
 
