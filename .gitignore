@@ -8,7 +8,6 @@ __pycache__/
 *$py.class
 
 # App cache
-cache/
 .pytest_cache/
 
 # System / IDE

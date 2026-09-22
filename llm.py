@@ -504,14 +504,24 @@ def ask_panel(
         messages.extend(chat_history[-6:])  # keep last 3 turns for context
     messages.append({"role": "user", "content": user_message})
 
-    client = _get_client()
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=1024,
-        system=PANEL_CHAT_SYSTEM,
-        messages=messages,
-    )
-    return response.content[0].text.strip()
+    try:
+        client = _get_client()
+        response = client.messages.create(
+            model=MODEL,
+            max_tokens=1024,
+            system=PANEL_CHAT_SYSTEM,
+            messages=messages,
+        )
+        return response.content[0].text.strip()
+    except Exception as e:
+        logger.warning("Claude API unavailable (%s); presenting grounded excerpts.", e)
+        lines = [
+            "**Transcripts Findings:**\n",
+            "Based on the relevant excerpts retrieved from the transcripts:\n"
+        ]
+        for c in retrieved[:3]:
+            lines.append(f"- **{c['expert_name']}** ({c['market']}, {c['timestamp']}): \"{c['text']}\"\n")
+        return "\n".join(lines)
 
 
 def get_retrieved_chunks_for_display(
