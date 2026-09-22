@@ -57,6 +57,7 @@ Hasamex_ass/
 ├── parser.py        # Transcript parsing: .txt → structured JSON chunks
 ├── llm.py           # Anthropic API wrapper — answers, synthesis, chat
 ├── verify.py        # Quote verification (anti-hallucination)
+├── tests.py         # Full unit test suite (24 tests)
 ├── requirements.txt
 ├── README.md
 ├── .env.example
@@ -65,6 +66,8 @@ Hasamex_ass/
 │   ├── Transcript_1_France.txt
 │   ├── Transcript_2_Germany.txt
 │   └── Transcript_3_UK.txt
+├── scripts/
+│   └── check_hallucinations.py  # Hallucination regression test (18 Q&As)
 └── cache/           # Auto-created — JSON cache files for parsed transcripts
                      #   and LLM responses
 ```
@@ -113,7 +116,7 @@ verify.py  ──► programmatic quote check
 
 ## Model Choice Rationale
 
-**Model:** `claude-sonnet-4-5`
+**Model:** `claude-sonnet-4-5-20250929` (Anthropic Claude Sonnet 4.5)
 
 Claude Sonnet 4.5 was chosen for the following reasons:
 
@@ -235,9 +238,9 @@ expert role, specialty) prevents irrelevant markets polluting results.
 Every chunk is stored with rich metadata:
 ```python
 {
-    "expert_name": "Dr. Sophie Marchand",
+    "expert_name": "Dr. Jean Martin",
     "market": "France",
-    "role": "Head of Minimally Invasive Surgery",
+    "role": "Head of Urology, CHU Bordeaux-Pellegrin",
     "specialty_tags": ["urology", "reimbursement"],
     "timestamp": "02:15",
 }
@@ -290,32 +293,47 @@ supports cache invalidation by expert or question.
 
 ---
 
-## Running Tests
+## Running Tests & Diagnostics
+
+### 1. Run the Full Unit Test Suite (24 Tests)
+Validates header extraction, exact and whitespace-normalised quote verification, rejection of fabricated quotes, retry logic, cache invalidation, and retrieval grounding.
 
 ```bash
-# Quick sanity check on the parser
-python -c "
-import parser as p
-chunks = p.parse_transcript('France')
-print(f'France: {len(chunks)} chunks')
-chunks = p.parse_transcript('Germany')
-print(f'Germany: {len(chunks)} chunks')
-chunks = p.parse_transcript('UK')
-print(f'UK: {len(chunks)} chunks')
-qs = p.load_interview_questions()
-print(f'Questions: {len(qs)}')
-"
-
-# Quick sanity check on the verifier
-python -c "
-from verify import verify_quote
-text = 'The primary barrier is capital cost and infrastructure requirements.'
-ok, matched = verify_quote('capital cost and infrastructure', text)
-print(f'Exact match: {ok}, matched={matched}')
-ok2, matched2 = verify_quote('totally fabricated phrase xyz', text)
-print(f'Fabricated: {ok2}')
-"
+python -X utf8 tests.py
 ```
+
+### 2. Run the Hallucination Regression Check
+Scans all 18 expert answers (3 experts x 6 questions), extracts all currency figures, percentages, dates, durations, acronyms, and proper nouns via regex, and verifies them against the source transcripts.
+
+```bash
+python -X utf8 scripts/check_hallucinations.py
+```
+
+---
+
+## Interview Guide Questions
+
+The 6 questions mapped from `data/Interview_Guide.txt`:
+1. **Adoption Level**: Current adoption level, procedure types, and clinical penetration.
+2. **Barriers to Adoption**: Primary barriers (capital expenditure, infrastructure retrofitting, clinical evidence, regulatory/cultural).
+3. **Budget & ROI Importance**: Hospital budget constraints, DRG/tariff economics, and return-on-investment timelines.
+4. **Training & Clinical Outcomes**: Surgeon training pathways, vendor certification vs. national credentialing, and simulator bottlenecks.
+5. **3-5 Year Outlook**: Market growth projections, expected installed base evolution, and emerging clinical indications.
+6. **Purchase Decision Timeline**: Hospital procurement cycles, stakeholder roles (CFO, clinical leads, tender committees), and leasing vs. capital purchase.
+
+---
+
+## Streamlit Cloud Deployment
+
+When deploying to [Streamlit Community Cloud](https://streamlit.io/cloud):
+1. Fork or push this repository to GitHub.
+2. Create a new app pointing to `app.py`.
+3. Under **App Settings → Secrets**, add your Anthropic API key in TOML format:
+   ```toml
+   ANTHROPIC_API_KEY = "sk-ant-your-key-here"
+   ```
+4. Save the secret. The app will automatically initialize and load Claude Sonnet 4.5.
+5. If changing model versions, use **Manage app → ⋮ → Reboot app** to flush the container's ephemeral cache.
 
 ---
 
