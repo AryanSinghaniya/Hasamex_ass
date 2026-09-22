@@ -22,6 +22,7 @@ except ImportError:
     pass  # python-dotenv not installed — env vars must be set manually
 
 import os
+import re
 import logging
 import functools
 from pathlib import Path
@@ -299,9 +300,7 @@ def _init_session():
     if "data_loaded" not in st.session_state:
         st.session_state.data_loaded = False
     # Re-evaluate api_key_ok from environment (.env)
-    st.session_state.api_key_ok = bool(
-        os.environ.get("GEMINI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
-    )
+    st.session_state.api_key_ok = bool(os.environ.get("ANTHROPIC_API_KEY"))
 
 
 # ── Data loading ──────────────────────────────────────────────────────────────
@@ -319,8 +318,8 @@ def _load_data(force: bool = False):
     On first load, calls log_all_headers() which prints the parsed expert
     name/role/market to stdout so identity bugs surface immediately in dev.
     """
-    if not (os.environ.get("GEMINI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")):
-        logger.info("No API key detected in .env file.")
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        logger.info("ANTHROPIC_API_KEY not detected in .env file.")
 
     with st.spinner("📂 Parsing transcripts…"):
         try:
@@ -505,26 +504,42 @@ def _render_transcript_context(market: str, timestamp: str):
 
 
 def _short_q_title(q_text: str) -> str:
-    """Extract a short title from the question text (first line heading)."""
+    """Extract a concise title from the question heading (first line)."""
     lines = q_text.strip().splitlines()
-    for line in lines:
-        line = line.strip()
-        if line and not line[0].isdigit():
-            return line.split("—")[0].split("-")[0].strip()[:60]
-    return lines[0][:60] if lines else "Question"
+    if not lines:
+        return "Question"
+    first_line = lines[0].strip()
+    # Strip leading numbering like '1. ', '1) ', 'Q1: '
+    title = re.sub(r"^(?:Q\d+[:.]?|\d+[.)])\s*", "", first_line).strip()
+    if title:
+        # Strip secondary clauses after em-dash or dash
+        title = re.split(r"[—–\-:]", title)[0].strip()
+        if title.isupper():
+            title = title.title()
+        return title[:60]
+    return lines[0][:60]
 
 
 def _q_short_label(q_text: str, idx: int) -> str:
-    """Very short label for tab/selectbox."""
-    titles = [
-        "Adoption Barriers",
-        "Reimbursement",
-        "Competitive Dynamics",
-        "Surgeon Training",
-        "Procurement",
-        "Future Outlook",
+    """
+    Derive a short label programmatically from parsed question text,
+    with an explicit fallback tied 1-to-1 to each question in Interview_Guide.txt.
+    """
+    # Programmatic derivation: extract title from question text
+    derived = _short_q_title(q_text)
+    if derived and derived != "Question":
+        return derived
+
+    # Fallback list tied explicitly to Question 1–6 in Interview_Guide.txt
+    fallback_labels = [
+        "Adoption Barriers",               # Q1: Adoption barriers & infrastructure
+        "Reimbursement Landscape",         # Q2: Reimbursement & tariff environment
+        "Competitive Dynamics",            # Q3: Platform competitive landscape
+        "Surgeon Training & Pathway",      # Q4: Surgeon training & credentialing
+        "Hospital Procurement Decisions",  # Q5: Hospital procurement & capital purchase
+        "Future Outlook",                  # Q6: 3–5 year market outlook
     ]
-    return titles[idx] if idx < len(titles) else f"Q{idx+1}"
+    return fallback_labels[idx] if idx < len(fallback_labels) else f"Q{idx+1}"
 
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
@@ -635,7 +650,7 @@ def _render_expert_tab(market: str):
 
     # Generate / retrieve answer
     if not st.session_state.api_key_ok:
-        st.warning("Please configure your API key in `.env` to generate answers.")
+        st.warning("Please configure your `ANTHROPIC_API_KEY` in `.env` to generate answers.")
         return
 
     with st.spinner(f"Generating answer for {market}…"):
@@ -672,7 +687,7 @@ def _render_synthesis_tab():
         return
 
     if not st.session_state.api_key_ok:
-        st.warning("Please configure your API key in `.env` to generate synthesis.")
+        st.warning("Please configure your `ANTHROPIC_API_KEY` in `.env` to generate synthesis.")
         return
 
     questions = st.session_state.questions
@@ -800,7 +815,7 @@ def _render_chat_tab():
         return
 
     if not st.session_state.api_key_ok:
-        st.warning("Please configure your API key in `.env` to use the chat.")
+        st.warning("Please configure your `ANTHROPIC_API_KEY` in `.env` to use the chat.")
         return
 
     # Render chat history
@@ -926,10 +941,10 @@ def main():
     if not st.session_state.data_loaded:
         _load_data()
 
-    # API key warning (only shows if .env is missing any key)
+    # API key warning (only shows if .env is missing ANTHROPIC_API_KEY)
     if not st.session_state.api_key_ok:
         st.warning(
-            "⚠️ No API key found in `.env`. Please add your `GEMINI_API_KEY` to the `.env` file.",
+            "⚠️ No API key found in `.env`. Please add your `ANTHROPIC_API_KEY` to the `.env` file.",
             icon="🔑",
         )
 
