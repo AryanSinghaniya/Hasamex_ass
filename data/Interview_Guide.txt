@@ -1,43 +1,12 @@
-Expert Interview Guide — Robotic Surgery Market Research
-=========================================================
+Interview Guide – European Robotic Surgery Market
 
-This guide is used across all expert interviews. Questions are numbered 1–6.
-Interviewers may probe deeper or adjust phrasing, but must cover all 6 areas.
+Project objective:
+Understand hospital adoption, barriers, economics, and purchasing behaviour for robotic surgery systems in Europe.
 
---------------------------------------------------------------------------
-
-1. ADOPTION BARRIERS
-   What are the primary barriers to the adoption of robotic surgery systems
-   in your market? Please consider capital cost, infrastructure, clinical
-   evidence, and any regulatory or cultural factors that are specific to
-   your country.
-
-2. REIMBURSEMENT LANDSCAPE
-   How does the current reimbursement environment affect the uptake of
-   robotic surgical procedures? Are there specific procedure types or
-   specialties where reimbursement coverage is stronger or weaker, and
-   how do you expect this to evolve over the next two to three years?
-
-3. COMPETITIVE DYNAMICS
-   How do you assess the competitive landscape among the major robotic
-   surgery platforms in your market — including both established players
-   and emerging entrants? Which factors (clinical outcomes, service,
-   pricing, ecosystem lock-in) most influence platform selection?
-
-4. SURGEON TRAINING & ADOPTION PATHWAY
-   What does the surgeon training pathway look like for robotic systems,
-   and how does it influence which platform a hospital ultimately chooses?
-   Are there training bottlenecks or credentialing challenges that slow
-   adoption?
-
-5. HOSPITAL PROCUREMENT DECISIONS
-   How do hospitals in your market structure procurement decisions for
-   robotic systems? Who are the key stakeholders (clinical, finance,
-   management), what is the typical decision timeline, and what role do
-   lease/subscription models play versus outright capital purchase?
-
-6. FUTURE OUTLOOK
-   What is your outlook for robotic surgery in your market over the next
-   three to five years? Which specialties do you expect to grow fastest,
-   and what technological or policy developments could meaningfully
-   accelerate or hinder that growth?
+Questions:
+1. How would you describe current adoption of robotic surgery in your market?
+2. What are the main barriers to adoption?
+3. How important are hospital budgets and ROI in purchasing decisions?
+4. How important are surgeon training and clinical outcomes?
+5. What adoption trend do you expect over the next 3–5 years?
+6. What is the typical hospital decision-making timeline for purchasing a new robotic system?

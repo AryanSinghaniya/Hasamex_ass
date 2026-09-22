@@ -150,15 +150,15 @@ FRANCE_TEXT = transcript_parser.get_transcript_text("France")
 
 
 def test_exact_match():
-    quote = "The single biggest barrier in France is capital expenditure"
-    ok, matched = verify.verify_quote(quote, FRANCE_TEXT, "00:22")
+    quote = "The biggest issue is still capital budget approval."
+    ok, matched = verify.verify_quote(quote, FRANCE_TEXT, "01:20")
     assert ok, "Exact substring match should pass"
     assert matched is not None
 run("Exact substring match passes", test_exact_match)
 
 
 def test_whitespace_match():
-    quote = "The  single biggest  barrier in France  is capital expenditure"
+    quote = "The  biggest issue  is still capital budget  approval."
     ok, _ = verify.verify_quote(quote, FRANCE_TEXT)
     assert ok, "Whitespace-normalised match should pass"
 run("Whitespace-normalised match passes", test_whitespace_match)
@@ -200,7 +200,7 @@ run("'Not discussed' answer bypasses quote verification", test_not_discussed_byp
 
 
 def test_grounding_clean():
-    clean_ans = "The single biggest barrier in France is capital expenditure with da Vinci systems costing one-point-five to two million euros upfront and annual service contracts up to two hundred thousand euros. ARS approval takes twelve to eighteen months."
+    clean_ans = "The biggest issue is capital budget approval. If two systems offer similar outcomes, the hospital will look hard at economics."
     ungrounded = verify.check_answer_grounding(clean_ans, FRANCE_TEXT)
     assert len(ungrounded) == 0, f"Expected 0 ungrounded claims, got: {ungrounded}"
 run("Clean grounded answer passes check_answer_grounding with 0 ungrounded claims", test_grounding_clean)
@@ -213,6 +213,25 @@ def test_grounding_fabricated():
     assert any("850" in u for u in ungrounded)
     assert any("Siemens Corindus" in u or "ANSM" in u for u in ungrounded)
 run("Fabricated facts/numbers are caught by check_answer_grounding", test_grounding_fabricated)
+
+
+def test_case_sensitive_acronym_grounding():
+    germany_text = transcript_parser.get_transcript_text("Germany")
+    assert "it" in germany_text.lower()
+    assert not verify.check_acronym_grounding("IT", germany_text), "IT must not match lowercase 'it' in Germany"
+    
+    # Non-existent acronyms must be rejected
+    assert not verify.check_acronym_grounding("NICE", FRANCE_TEXT)
+    assert not verify.check_acronym_grounding("FDA", FRANCE_TEXT)
+run("Case-sensitive acronym matching prevents lowercase word collisions", test_case_sensitive_acronym_grounding)
+
+
+def test_case_sensitive_proper_noun_grounding():
+    germany_text = transcript_parser.get_transcript_text("Germany")
+    # Test checking logic even if names aren't naturally in these simple transcripts
+    assert not verify.check_proper_noun_grounding("Intuitive Surgical", FRANCE_TEXT)
+    assert not verify.check_proper_noun_grounding("Intuitive Surgical", germany_text)
+run("Case-sensitive proper-noun phrase matching enforces word boundaries", test_case_sensitive_proper_noun_grounding)
 
 
 
@@ -277,7 +296,7 @@ run("Pipeline discards fabricated quote and logs warning", test_both_attempts_fa
 
 def test_retry_succeeds():
     """First attempt is fabricated; retry returns a real quote. Pipeline should accept."""
-    real_quote = "The single biggest barrier in France is capital expenditure"
+    real_quote = "The biggest issue is still capital budget approval."
 
     fabricated_answer = {
         "answer": "Capital cost is the biggest barrier.",
@@ -288,7 +307,7 @@ def test_retry_succeeds():
     def good_re_prompt(question, chunks, expert_name, bad_quote):
         return {
             "answer": "Capital cost is the biggest barrier.",
-            "timestamp": "00:22",
+            "timestamp": "01:20",
             "supporting_quote": real_quote,
         }
 

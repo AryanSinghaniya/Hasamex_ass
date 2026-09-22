@@ -1,96 +1,45 @@
-Expert Interview Transcript
-============================
-Expert Name: Dr. Emily Carter
-Role: Consultant Urologist, NHS Foundation Trust Oxford; Clinical Advisor, NHS England Robotic Surgery Programme
+Expert 3 – Dr. Emily Carter
+Role: Consultant Urologist
 Market: United Kingdom
-Interview Date: 2026-09-15
-Interviewer: James Whitfield, Hasamex Research
 
---------------------------------------------------------------------------
+00:00
+Interviewer: How would you describe adoption in the UK?
 
-00:08
-Interviewer: Dr. Carter, thanks very much for joining. Let's start at the top — what are the main adoption barriers for robotic surgery in the UK?
+00:14
+Dr. Carter: Adoption is increasing, and in some larger NHS trusts robotic surgery is becoming standard for selected procedures. But access still varies significantly by hospital.
 
-00:16
-Dr. Carter: Thanks for having me. The UK is a fascinating case because we have one of the fastest-growing robotic programmes in Europe, but we're starting from a lower base than Germany or France. The primary barrier is, as everywhere, capital cost — a da Vinci Xi runs about one-point-eight million pounds, and for an NHS trust, that's a multi-year capital commitment that competes with estates, IT, and basic equipment. The NHS capital envelope is chronically underfunded relative to revenue budgets, which is why so many trusts have historically deferred.
+01:00
+Interviewer: What are the main barriers?
 
-00:55
-Dr. Carter: What's changed is the NHS England Robotic Surgery Programme, which I advise. Since 2023, NHS England has been centrally funding robotic hubs — we call them Robotic Surgery Centres — and the intention is to concentrate volume and expertise rather than having every district general hospital get one robot that sits idle three days a week. We've designated around forty centres so far, and the plan is to expand to eighty by 2028.
+01:05
+Dr. Carter: Funding is important, but I would say training capacity is just as important. You can buy a system, but if you cannot train enough surgeons and theatre staff, adoption stalls.
 
-01:28
-Interviewer: Are there regulatory or clinical-evidence barriers?
+02:02
+Interviewer: How important is ROI?
 
-01:33
-Dr. Carter: Less so than five years ago. NICE reviewed robotic-assisted prostatectomy and colorectal surgery and issued guidance that was broadly permissive — it said the evidence is sufficient to support use within NHS practice, subject to governance requirements. That NICE approval was important because it gave trusts the clinical governance cover they needed to proceed. The remaining evidence gaps are in specialties like bariatric surgery and upper GI, where the evidence base is thinner.
+02:07
+Dr. Carter: It matters, but the discussion is not always purely financial. Hospitals also consider patient outcomes, length of stay, surgeon recruitment and whether the technology improves their clinical position.
 
-02:05
-Interviewer: And reimbursement — how does that work in an NHS context?
+03:03
+Interviewer: So would you say economics are less important in the UK?
 
-02:11
-Dr. Carter: The NHS is primarily a block-contract system now, moving away from the old payment-by-results tariff. Under block contracts, a trust receives a fixed payment for delivering a defined portfolio of services, so there's no separate tariff for robotic procedures. This means the economics of robotic surgery are entirely internalised — the trust has to justify it on the basis of efficiency, quality, or market position.
+03:10
+Dr. Carter: I would say economics and clinical strategy are balanced. I would not say finance alone decides the purchase.
 
-02:45
-Dr. Carter: Where robotic surgery has made a strong economic case within the NHS is on length of stay. A robotic prostatectomy patient typically goes home in one to two days rather than three to five for open surgery — that's a very real cost saving for the trust when beds are scarce. The challenge is that this benefit accrues to the whole hospital system but the cost of the robot sits on the surgical budget. Aligning those incentives internally is genuinely difficult.
+04:01
+Interviewer: What is your outlook for the next three to five years?
 
-03:20
-Dr. Carter: For private patients — and there's a significant private sector in the UK — BUPA and AXA Health do reimburse robotic procedures, and increasingly patients are asking for robotic surgery specifically. That's a meaningful revenue stream for trusts that have private patient units, and it helps cross-subsidise the NHS robotic programme at those trusts.
+04:06
+Dr. Carter: I am quite positive. I think adoption could accelerate if training expands and systems become more cost competitive. I could see procedure growth above 15 percent annually in some areas.
 
-03:48
-Interviewer: What does the competitive landscape look like for robotic platforms in the UK?
+05:00
+Interviewer: What about purchase timelines?
 
-03:55
-Dr. Carter: Da Vinci is dominant — probably seventy percent of installed systems — but the UK has been a particularly active market for new entrants. CMR Surgical is a British company — they're based in Cambridge — so Versius has had a home-court advantage in terms of early adoption, NHS relationships, and frankly a degree of patriotic procurement sentiment, which I know sounds odd but it's real. Several NHS trusts explicitly cited the fact that Versius is UK-made as a factor in their evaluation.
+05:04
+Dr. Carter: Around six to nine months can happen if funding is already available. If the trust has to wait for a new capital cycle, it can take much longer.
 
-04:35
-Dr. Carter: Medtronic's Hugo has also gained meaningful traction. There was an NHS England evaluation programme that assessed Hugo at four sites, and the results were positive enough that Hugo is now part of the procurement framework. The UK is also where some of the most interesting early clinical work on Johnson and Johnson's Ottava is happening, even though it doesn't have full CE mark yet.
+06:00
+Interviewer: Any final thought?
 
-05:05
-Interviewer: What drives platform selection — what are the decisive factors?
-
-05:10
-Dr. Carter: For large NHS trusts with established programmes, it's increasingly total cost of ownership and flexibility. A trust running four hundred robotic cases a year will spend two million pounds on consumables over five years — more than the robot itself. So consumable pricing is huge. For smaller or newer programmes, it's the training ecosystem and clinical familiarity, because you need to get your surgeons up to speed quickly to justify the capital.
-
-05:40
-Dr. Carter: Service and uptime are also critical in the NHS context. If your robot is down for a week, you're cancelling operations and patients go on waiting lists — which for the NHS is a politically sensitive issue. So vendors who can guarantee fast field-engineer response and high uptime get a real advantage in NHS tenders.
-
-06:05
-Interviewer: Let's talk about the training pathway for surgeons in the UK.
-
-06:12
-Dr. Carter: The UK has moved further than most European countries toward a structured, national credentialing framework. The Royal Colleges — the Royal College of Surgeons of England, the Royal College of Surgeons of Edinburgh — are developing a competency-based framework for robotic surgery that will sit alongside the existing specialty training curricula. It's not fully implemented yet, but the direction of travel is clear.
-
-06:42
-Dr. Carter: Currently, training is still largely platform-specific and vendor-driven, with the NHS Robotic Programme trying to standardise minimum requirements. We've set a threshold of twenty proctored cases before independent practice, but that's a guideline rather than a legal mandate. The practical challenge is simulation access — we've invested in three national simulation centres, but demand significantly exceeds capacity. Trainees in Scotland or Northern Ireland particularly struggle with access.
-
-07:18
-Interviewer: How does procurement work in the NHS?
-
-07:24
-Dr. Carter: NHS procurement follows Crown Commercial Service frameworks — the CCS has negotiated framework agreements with several robotic vendors, which allows trusts to call off systems without running a full tender each time. That's simplified procurement considerably. The decision-making within a trust is typically the medical director, the chief operating officer, and the clinical lead for the robotic programme. For a capital item of this size, it usually goes to the trust board.
-
-08:00
-Dr. Carter: What's very NHS-specific is the role of integrated care systems — ICSs — in coordinating robotic strategy across multiple trusts in a region. An ICS might decide that robotic urology will be concentrated at one or two trusts in the region rather than each trust acquiring separately. This creates regional centres of excellence but can also create frustrating situations where a trust that wants a robot is told by the ICS to refer its robotic cases to a neighbouring site.
-
-08:38
-Interviewer: And payment models?
-
-08:43
-Dr. Carter: The NHS has been slower to adopt usage-based models because procurement rules and accounting standards make them complex in the public sector. That said, at least two vendors have now structured deals that work within NHS accounting frameworks — essentially lease-to-own arrangements — and I expect this to grow. The pressure is from trusts that want robotic capability but cannot access capital budgets.
-
-09:10
-Interviewer: Finally, your outlook for the UK market over the next three to five years?
-
-09:17
-Dr. Carter: Very positive. The NHS Robotic Programme has political backing and central funding — that's a structural difference from France or Germany where it's much more fragmented. I'd forecast growth from the current approximately one hundred and eighty systems to three hundred and fifty or four hundred by 2029. Urology will remain the highest-volume specialty, but colorectal and gynaecological oncology will grow significantly. There's also emerging use in cardiac surgery — mitral valve repair — which I think is underestimated in the market forecasts.
-
-09:58
-Dr. Carter: The technology I'm most excited about is AI-assisted decision support during surgery — things like intraoperative margin assessment for cancer surgery. If that proves out clinically, it fundamentally changes the value proposition of robotic surgery from a tool that improves ergonomics to a tool that improves oncological outcomes. That's a much stronger argument for the health economist.
-
-10:28
-Dr. Carter: The main risk I'd flag is workforce. We are training surgeons faster than ever, but the NHS has a known consultant shortage, and if we can't staff the robotic programmes, the capital investment is wasted. It's a very real operational constraint.
-
-10:48
-Interviewer: Excellent — very thorough. Thank you, Dr. Carter.
-
-10:52
-Dr. Carter: Thanks very much. Good luck with the project.
+06:04
+Dr. Carter: The key point is that adoption is not just about buying the machine. Hospitals need enough trained people and enough procedure volume to make the programme sustainable.

@@ -40,6 +40,8 @@ def _parse_header(lines: list[str]) -> dict:
         line = line.strip()
         if line.lower().startswith("expert name:"):
             header["expert_name"] = line.split(":", 1)[1].strip()
+        elif line.lower().startswith("expert ") and " – " in line:
+            header["expert_name"] = line.split(" – ", 1)[1].strip()
         elif line.lower().startswith("role:"):
             header["role"] = line.split(":", 1)[1].strip()
         elif line.lower().startswith("market:"):
@@ -313,6 +315,12 @@ def load_interview_questions() -> list[str]:
     if not questions:
         # Fallback: return whole guide as single block
         questions = [text.strip()]
+
+    # Handle the case where the user pasted the simple questions from 1 to 6 without headers
+    if len(questions) == 0 or len(questions) == 1:
+        parts = re.split(r"(?m)^\d+\.\s+", text)
+        if len(parts) > 1:
+            questions = [p.strip() for p in parts[1:]]
 
     return questions
 

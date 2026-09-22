@@ -180,41 +180,85 @@ def extract_numbers_and_measures(text: str) -> list[str]:
     return result
 
 
-def extract_proper_nouns_and_phrases(text: str) -> list[str]:
-    """Extract acronyms, capitalized multi-word phrases, and proper noun terms."""
-    entities = []
-    # Acronyms (ARS, HAS, GHS, CHU, DRG, NUB, G-BA, NICE, NHS, ICS, CCS, EMR, CFO)
+def extract_acronyms(text: str) -> list[str]:
+    """Extract all-caps acronyms (e.g. ARS, HAS, GHS, CHU, DRG, NUB, G-BA, NICE, NHS, ICS, CCS, EMR, CFO)."""
     acronyms = re.findall(r"\b[A-Z]{2,}(?:-[A-Z]+)?\b", text)
+    result = []
+    seen = set()
     for acr in acronyms:
-        if acr not in STOP_ENTITIES and len(acr) >= 2:
-            entities.append(acr)
+        if acr not in STOP_ENTITIES and len(acr) >= 2 and acr not in seen:
+            seen.add(acr)
+            result.append(acr)
+    return result
 
-    # Multi-word proper nouns: e.g. "Intuitive Surgical", "Medtronic Hugo", "da Vinci Xi", "NICE guidance"
+
+def extract_proper_noun_phrases(text: str) -> list[str]:
+    """Extract capitalized multi-word phrases and branded platform names."""
     multi_words = re.findall(
         r"\bda\s+Vinci(?:\s+[A-Z0-9][a-z0-9]*)*\b|"
-        r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b|"
+        r"\b[A-Z][a-z]+(?:'s)?(?:\s+[A-Z][a-z]+)+\b|"
         r"\b[A-Z]{2,}\s+(?:tariffs?|systems?|guidance|frameworks?|programmes?|programs?)\b",
         text,
     )
+    result = []
+    seen = set()
     for mw in multi_words:
         cleaned = mw.strip()
         words = cleaned.split()
         if all(w in STOP_ENTITIES for w in words):
             continue
-        if len(cleaned) > 2 and cleaned not in STOP_ENTITIES:
-            entities.append(cleaned)
+        if len(cleaned) > 2 and cleaned not in STOP_ENTITIES and cleaned not in seen:
+            seen.add(cleaned)
+            result.append(cleaned)
+    return result
 
+
+def extract_proper_nouns_and_phrases(text: str) -> list[str]:
+    """Backward-compatible combined extraction for acronyms and proper noun phrases."""
+    acrs = extract_acronyms(text)
+    pns = extract_proper_noun_phrases(text)
     seen = set()
     deduped = []
-    for e in entities:
-        if e.lower() not in seen:
-            seen.add(e.lower())
-            deduped.append(e)
+    for item in acrs + pns:
+        if item.lower() not in seen:
+            seen.add(item.lower())
+            deduped.append(item)
     return deduped
 
 
+def check_acronym_grounding(acronym: str, transcript_text: str) -> bool:
+    """
+    Check all-caps acronym against original-case transcript text using
+    case-sensitive, word-boundary matching.
+    Ensures 'HAS' only matches capitalized 'HAS' in transcript, never the lowercase word 'has'.
+    """
+    if not acronym or not acronym.strip():
+        return True
+    pattern = rf"\b{re.escape(acronym.strip())}\b"
+    return bool(re.search(pattern, transcript_text))
+
+
+def check_proper_noun_grounding(phrase: str, transcript_text: str) -> bool:
+    """
+    Check proper-noun phrase against original-case transcript text using
+    case-sensitive, word-boundary matching.
+    """
+    if not phrase or not phrase.strip():
+        return True
+    pattern = rf"\b{re.escape(phrase.strip())}\b"
+    return bool(re.search(pattern, transcript_text))
+
+
 def check_phrase_grounding(phrase: str, transcript_text: str, norm_transcript: str) -> bool:
-    """Check if a specific number or phrase appears in transcript_text."""
+    """
+    Check numbers, currency amounts, percentages, ranges, and durations against transcript_text.
+    Uses normalized substring, word-number equivalence, and fuzzy matching (gated to length >= 20 chars).
+    If an all-caps acronym or proper noun phrase is passed, enforces case-sensitive word-boundary check.
+    """
+    cleaned = phrase.strip()
+    if re.fullmatch(r"[A-Z]{2,}(?:-[A-Z]+)?", cleaned):
+        return check_acronym_grounding(cleaned, transcript_text)
+
     norm_phrase = _normalize(phrase)
     if not norm_phrase:
         return True
@@ -244,7 +288,6 @@ def check_phrase_grounding(phrase: str, transcript_text: str, norm_transcript: s
         return True
 
     # Minimum-length gate: Fuzzy matching is ONLY used for phrases with length >= 20 chars.
-    # Short phrases (< 20 chars) like acronyms and short names MUST be exact substring matches.
     p_len = len(norm_phrase)
     if p_len < 20:
         return False
@@ -265,27 +308,48 @@ def check_phrase_grounding(phrase: str, transcript_text: str, norm_transcript: s
 def check_answer_grounding(answer_text: str, transcript_text: str) -> list[str]:
     """
     Extract numbers, currency amounts, percentages, ranges, durations,
-    and capitalized proper-noun phrases from answer_text, and check whether
-    each one appears in transcript_text (exact match or fuzzy ratio >= 0.85).
+    all-caps acronyms, and capitalized proper-noun phrases from answer_text,
+    and check whether each one appears in transcript_text:
+      1. All-caps acronyms: checked with CASE-SENSITIVE, WORD-BOUNDARY matching on transcript_text.
+      2. Multi-word proper nouns: checked with CASE-SENSITIVE, WORD-BOUNDARY matching on transcript_text.
+      3. Numbers/measures/currencies: checked via normalized substring + number-words + fuzzy matching (>= 20 chars).
 
     Returns:
-        List of ungrounded phrases/numbers that could NOT be found in the transcript.
+        List of ungrounded phrases/numbers/acronyms that could NOT be found in transcript_text.
     """
     if not answer_text or _is_not_discussed(answer_text):
         return []
 
     norm_transcript = _normalize(transcript_text)
     numbers = extract_numbers_and_measures(answer_text)
-    proper_nouns = extract_proper_nouns_and_phrases(answer_text)
+    acronyms = extract_acronyms(answer_text)
+    proper_nouns = extract_proper_noun_phrases(answer_text)
 
-    all_claims = numbers + proper_nouns
     ungrounded = []
 
-    for item in all_claims:
-        if not check_phrase_grounding(item, transcript_text, norm_transcript):
-            ungrounded.append(item)
+    # 1. Numbers, currencies, percentages, durations
+    for num in numbers:
+        if not check_phrase_grounding(num, transcript_text, norm_transcript):
+            ungrounded.append(num)
 
-    return ungrounded
+    # 2. Case-sensitive all-caps acronyms
+    for acr in acronyms:
+        if not check_acronym_grounding(acr, transcript_text):
+            ungrounded.append(acr)
+
+    # 3. Case-sensitive proper-noun phrases
+    for pn in proper_nouns:
+        if not check_proper_noun_grounding(pn, transcript_text):
+            ungrounded.append(pn)
+
+    # Deduplicate while preserving order
+    seen = set()
+    deduped = []
+    for item in ungrounded:
+        if item not in seen:
+            seen.add(item)
+            deduped.append(item)
+    return deduped
 
 
 # ── Dual Verification & Repair ───────────────────────────────────────────────
