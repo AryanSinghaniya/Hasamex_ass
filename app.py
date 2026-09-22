@@ -13,7 +13,7 @@ Tabs:
   3. Ask the Panel (free-form retrieval-based chat)
 """
 
-# Load .env file if present — allows setting GROQ_API_KEY via a .env file
+# Load .env file if present — allows setting ANTHROPIC_API_KEY via a .env file
 # without manually exporting env vars each session.
 try:
     from dotenv import load_dotenv
@@ -32,8 +32,8 @@ import streamlit as st
 
 # Sync Streamlit Community Cloud secrets into os.environ if available
 try:
-    if "GROQ_API_KEY" in st.secrets and not os.environ.get("GROQ_API_KEY"):
-        os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
+    if "ANTHROPIC_API_KEY" in st.secrets and not os.environ.get("ANTHROPIC_API_KEY"):
+        os.environ["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
 except Exception:
     pass
 
@@ -307,12 +307,12 @@ def _init_session():
     if "data_loaded" not in st.session_state:
         st.session_state.data_loaded = False
     # Re-evaluate api_key_ok from environment or Streamlit secrets
-    has_key = bool(os.environ.get("GROQ_API_KEY"))
+    has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
     if not has_key:
         try:
-            has_key = bool(st.secrets.get("GROQ_API_KEY"))
+            has_key = bool(st.secrets.get("ANTHROPIC_API_KEY"))
             if has_key:
-                os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
+                os.environ["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
         except Exception:
             pass
     st.session_state.api_key_ok = has_key
@@ -333,8 +333,8 @@ def _load_data(force: bool = False):
     On first load, calls log_all_headers() which prints the parsed expert
     name/role/market to stdout so identity bugs surface immediately in dev.
     """
-    if not os.environ.get("GROQ_API_KEY"):
-        logger.info("GROQ_API_KEY not detected.")
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        logger.info("ANTHROPIC_API_KEY not detected.")
 
     with st.spinner("📂 Parsing transcripts…"):
         try:
@@ -573,36 +573,25 @@ def _short_q_title(q_text: str) -> str:
     if not lines:
         return "Question"
     first_line = lines[0].strip()
-    # Strip leading numbering like '1. ', '1) ', 'Q1: '
-    title = re.sub(r"^(?:Q\d+[:.]?|\d+[.)])\s*", "", first_line).strip()
+    # Strip leading numbering like '1. ', '1) ', 'Q1: ', 'N. '
+    title = re.sub(r"^(?:Q\d+[:.]?|\d+[.)]?)\s*", "", first_line).strip()
     if title:
         # Strip secondary clauses after em-dash or dash
         title = re.split(r"[—–\-:]", title)[0].strip()
         if title.isupper():
             title = title.title()
+        words = title.split()
+        if len(words) > 5:
+            title = " ".join(words[:5]) + "..."
         return title[:60]
     return lines[0][:60]
 
 
 def _q_short_label(q_text: str, idx: int) -> str:
     """
-    Short labels matching the actual six question headings in data/Interview_Guide.txt:
-      Q1: ADOPTION BARRIERS
-      Q2: REIMBURSEMENT LANDSCAPE
-      Q3: COMPETITIVE DYNAMICS
-      Q4: SURGEON TRAINING & ADOPTION PATHWAY
-      Q5: HOSPITAL PROCUREMENT DECISIONS
-      Q6: FUTURE OUTLOOK
+    Generate short label dynamically from the question text.
     """
-    labels = [
-        "Adoption Barriers",              # Q1: Primary barriers to robotic surgery adoption
-        "Reimbursement Landscape",        # Q2: How reimbursement affects uptake
-        "Competitive Dynamics",           # Q3: Competitive landscape among platforms
-        "Surgeon Training & Pathway",     # Q4: Surgeon training pathway & credentialing
-        "Hospital Procurement Decisions", # Q5: How hospitals structure procurement decisions
-        "Future Outlook",                 # Q6: 3-5 year outlook for robotic surgery
-    ]
-    return labels[idx] if idx < len(labels) else f"Q{idx+1}"
+    return _short_q_title(q_text)
 
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
@@ -641,6 +630,48 @@ def _render_sidebar():
                 f"{MARKET_ICONS[market]} {t_icon} Transcript · {c_icon} Cache &nbsp; **{market}**",
                 unsafe_allow_html=True,
             )
+
+        st.markdown("---")
+        st.markdown("#### 📤 Upload Transcripts")
+        uploaded_files = st.file_uploader(
+            "Upload replacement transcripts", 
+            type=["txt"], 
+            accept_multiple_files=True
+        )
+        if uploaded_files:
+            if len(uploaded_files) > 3:
+                st.warning("Max 3 files allowed.")
+            else:
+                for uploaded_file in uploaded_files:
+                    # Match by filename pattern to determine market
+                    fname = uploaded_file.name.lower()
+                    market_match = None
+                    if "france" in fname:
+                        market_match = "France"
+                    elif "germany" in fname:
+                        market_match = "Germany"
+                    elif "uk" in fname:
+                        market_match = "UK"
+                    
+                    if market_match:
+                        # Save to data/ directory
+                        target_filename = transcript_parser.TRANSCRIPT_FILES[market_match]
+                        target_path = transcript_parser.DATA_DIR / target_filename
+                        with open(target_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+                        # Clear cache and trigger reload
+                        cache_file = transcript_parser.CACHE_DIR / f"parsed_{market_match}.json"
+                        if cache_file.exists():
+                            cache_file.unlink()
+                
+                if st.button("Apply Uploaded Transcripts", use_container_width=True):
+                    _load_all_data.clear()
+                    st.session_state.answers = {m: {} for m in MARKETS}
+                    st.session_state.syntheses = {}
+                    st.session_state.chat_history = []
+                    st.session_state.chat_retrieved = []
+                    _load_data(force=True)
+                    st.rerun()
 
         st.markdown("---")
         st.markdown("#### ⚙️ Controls")
@@ -717,7 +748,7 @@ def _render_expert_tab(market: str):
     if answer:
         _render_answer_card(answer, selected_q, questions[selected_q])
     elif not st.session_state.api_key_ok:
-        st.warning("Please configure your `GROQ_API_KEY` in `.env` or Streamlit Cloud Secrets to generate answers.")
+        st.warning("Please configure your `ANTHROPIC_API_KEY` in `.env` or Streamlit Cloud Secrets to generate answers.")
     else:
         st.error("Could not generate answer.")
 
@@ -874,7 +905,7 @@ def _render_chat_tab():
         return
 
     if not st.session_state.api_key_ok:
-        st.warning("Please configure your `GROQ_API_KEY` in `.env` or Streamlit Cloud Secrets to use the chat.")
+        st.warning("Please configure your `ANTHROPIC_API_KEY` in `.env` or Streamlit Cloud Secrets to use the chat.")
         return
 
     # Render chat history
@@ -1000,10 +1031,10 @@ def main():
     if not st.session_state.data_loaded:
         _load_data()
 
-    # API key warning (only shows if GROQ_API_KEY is missing)
+    # API key warning (only shows if ANTHROPIC_API_KEY is missing)
     if not st.session_state.api_key_ok:
         st.warning(
-            "⚠️ No API key found. Please add your `GROQ_API_KEY` to your `.env` file (local) or into **Settings → Secrets** (Streamlit Cloud).",
+            "⚠️ No API key found. Please add your `ANTHROPIC_API_KEY` to your `.env` file (local) or into **Settings → Secrets** (Streamlit Cloud).",
             icon="🔑",
         )
 

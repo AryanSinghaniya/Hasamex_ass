@@ -52,7 +52,7 @@ def _parse_header(lines: list[str]) -> dict:
 # ── Body / turn parsing ─────────────────────────────────────────────────────
 
 # Matches timestamp lines like "01:23" or "01:23:45"
-TIMESTAMP_RE = re.compile(r"^(\d{1,2}:\d{2}(?::\d{2})?)$")
+TIMESTAMP_RE = re.compile(r"^(\d{1,2}:\d{2}(?::\d{2})?)$", re.MULTILINE)
 
 # Matches speaker lines like "Dr. Martin: some text..." or
 # "Anna Keller: text..."  — speaker name ends at first colon.
@@ -179,12 +179,19 @@ def parse_transcript(market: str, force: bool = False) -> list[dict]:
 
     raw = transcript_path.read_text(encoding="utf-8")
 
-    # Split header from body — body starts after the dashed separator line
-    separator = "-" * 10
-    if separator in raw:
-        header_section, body_section = raw.split(separator, 1)
-    else:
-        header_section, body_section = raw[:500], raw
+    # Split header from body at the first timestamp line
+    body_start_idx = len(raw)
+    for match in TIMESTAMP_RE.finditer(raw):
+        # find the start of the line containing this match
+        line_start = raw.rfind('\n', 0, match.start()) + 1
+        if line_start == 0 and match.start() == 0:
+            body_start_idx = 0
+        else:
+            body_start_idx = line_start
+        break
+    
+    header_section = raw[:body_start_idx]
+    body_section = raw[body_start_idx:]
 
     header = _parse_header(header_section.splitlines())
     expert_name = header.get("expert_name", "Unknown Expert")
@@ -233,8 +240,14 @@ def get_header(market: str) -> dict:
     if not path.exists():
         return {"expert_name": "Unknown", "role": "Unknown", "market": market}
     raw = path.read_text(encoding="utf-8")
-    separator = "-" * 10
-    header_section = raw.split(separator, 1)[0] if separator in raw else raw[:500]
+    # Find first timestamp
+    body_start_idx = len(raw)
+    for match in TIMESTAMP_RE.finditer(raw):
+        line_start = raw.rfind('\n', 0, match.start()) + 1
+        body_start_idx = line_start if line_start > 0 else 0
+        break
+        
+    header_section = raw[:body_start_idx]
     return _parse_header(header_section.splitlines())
 
 
@@ -286,11 +299,14 @@ def get_transcript_text(market: str) -> str:
     if not path.exists():
         raise FileNotFoundError(f"Transcript not found: {path}")
     raw = path.read_text(encoding="utf-8")
-    separator = "-" * 10
-    if separator in raw:
-        _, body = raw.split(separator, 1)
-        return body
-    return raw
+    # Split at first timestamp
+    body_start_idx = len(raw)
+    for match in TIMESTAMP_RE.finditer(raw):
+        line_start = raw.rfind('\n', 0, match.start()) + 1
+        body_start_idx = line_start if line_start > 0 else 0
+        break
+        
+    return raw[body_start_idx:]
 
 
 def load_interview_questions() -> list[str]:

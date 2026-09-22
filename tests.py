@@ -139,6 +139,24 @@ def test_chunks_uk():
 run("UK chunks carry correct expert_name='Dr. Emily Carter'", test_chunks_uk)
 
 
+def test_parse_real_transcripts():
+    # Verify that the new timestamp-based split works correctly on real files
+    for market, expected in EXPECTED.items():
+        chunks = transcript_parser.parse_transcript(market, force=True)
+        assert chunks, f"No chunks parsed for {market}"
+        # Validate that the first chunk's timestamp is '00:00'
+        first_chunk = chunks[0]
+        assert first_chunk["timestamp"] == "00:00", (
+            f"Expected first chunk timestamp '00:00' for {market}, got '{first_chunk['timestamp']}'"
+        )
+        
+        # Verify header propagation to chunks
+        assert first_chunk["expert_name"] == expected["expert_name"]
+        assert first_chunk["market"] == expected["market"]
+run("Real transcripts split correctly at 00:00 and preserve header info", test_parse_real_transcripts)
+
+
+
 # =====================================================================
 # 2. Verify -- quote verification logic
 # =====================================================================

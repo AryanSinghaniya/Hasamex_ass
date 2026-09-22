@@ -21,12 +21,12 @@ pip install -r requirements.txt
 
 **PowerShell (Windows):**
 ```powershell
-$env:GROQ_API_KEY = "your-groq-api-key-here"
+$env:ANTHROPIC_API_KEY = "your-groq-api-key-here"
 ```
 
 **Bash / macOS / Linux:**
 ```bash
-export GROQ_API_KEY="your-groq-api-key-here"
+export ANTHROPIC_API_KEY="your-groq-api-key-here"
 ```
 
 Or copy `.env.example` to `.env` and fill in your key. The `python-dotenv`
@@ -326,7 +326,7 @@ When deploying to [Streamlit Community Cloud](https://streamlit.io/cloud):
 2. Create a new app pointing to `app.py`.
 3. Under **App Settings → Secrets**, add your Groq API key in TOML format:
    ```toml
-   GROQ_API_KEY = "your-groq-api-key-here"
+   ANTHROPIC_API_KEY = "your-groq-api-key-here"
    ```
 4. Save the secret. The app will automatically initialize and load Groq.
 5. If changing model versions, use **Manage app → ⋮ → Reboot app** to flush the container's ephemeral cache.
@@ -337,7 +337,7 @@ When deploying to [Streamlit Community Cloud](https://streamlit.io/cloud):
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GROQ_API_KEY` | Yes (for LLM features) | Groq API key. Get one for free at console.groq.com |
+| `ANTHROPIC_API_KEY` | Yes (for LLM features) | Groq API key. Get one for free at console.groq.com |
 
 ---
 
