@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 # ── Config ──────────────────────────────────────────────────────────────────
 MODEL = "claude-sonnet-4-5-20250929"
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-3.6-flash"
 CACHE_DIR = Path("cache")
 
 # Maximum number of transcript chunks to include in a single API call.
@@ -94,7 +94,7 @@ def get_active_model_name() -> str:
             return f"Claude {major}.{minor} {tier.capitalize()}"
         return MODEL.replace("-", " ").title()
     elif _get_gemini_key():
-        return "Google Gemini 2.0 Flash (Free)"
+        return "Google Gemini 3.6 Flash (Free)"
     return "Verified Pre-Cached (Claude Sonnet 4.5)"
 
 
@@ -296,12 +296,11 @@ def _call_gemini(system: str, user_message: str) -> str:
                 continue
             else:
                 logger.error("Gemini API error %s: %s", resp.status_code, resp.text[:200])
-                raise RuntimeError(f"Gemini API returned {resp.status_code}: {resp.text[:200]}")
         except Exception as e:
             if attempt == 2:
                 raise e
-            time.sleep(1)
-    return ""
+            time.sleep(2)
+    raise RuntimeError("Gemini API quota/rate limit exceeded. Please wait a few seconds or use pre-cached verified answers.")
 
 
 def _call_gemini_chat(system: str, messages: list[dict]) -> str:
@@ -341,9 +340,15 @@ def _call_gemini_chat(system: str, messages: list[dict]) -> str:
 
 
 def _call_llm(system: str, user_message: str) -> str:
-    """Dispatch call to Claude if Anthropic key is set, else Gemini."""
+    """Dispatch call to Claude if Anthropic key is set and working, else Gemini."""
     if _get_anthropic_key():
-        return _call_claude(system, user_message)
+        try:
+            return _call_claude(system, user_message)
+        except Exception as e:
+            if _get_gemini_key():
+                logger.warning("Claude API failed (%s); falling back to Gemini.", e)
+                return _call_gemini(system, user_message)
+            raise e
     elif _get_gemini_key():
         return _call_gemini(system, user_message)
     raise EnvironmentError("No API key set. Provide either ANTHROPIC_API_KEY or GEMINI_API_KEY.")
