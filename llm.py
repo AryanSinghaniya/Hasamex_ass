@@ -133,7 +133,7 @@ said this most directly.
    c. "supporting_quote": Provide a VERBATIM, EXACT quote from the transcript text \
 that supports the answer. Do NOT edit, paraphrase, fix grammar, or change even one word. \
 It must be a precise substring of the transcript text.
-4. Do NOT fabricate numbers, prices, percentages, adoption rates, timelines, or names.
+4. Do NOT fabricate numbers, prices, percentages, adoption rates, timelines, or names. If a number is written out in words in the transcript (e.g. "one-point-five"), you MUST write it exactly as words in your answer. Do NOT convert it to digits like "1.5".
 
 Respond ONLY with a valid JSON object matching this schema:
 {
@@ -157,10 +157,11 @@ copied directly from the provided transcript text.
 and proper noun in the answer paragraph must be explicitly stated in the transcript text. \
 Do NOT invent, extrapolate, or estimate figures.
 3. Do not change punctuation, do not fix spoken grammar, do not omit words in supporting_quote.
-4. If you cannot find an exact verbatim quote to support the answer, set \
+4. If a number is written as a word in the transcript (e.g. "one-point-five"), keep it as a word. Do not convert to digits.
+5. If you cannot find an exact verbatim quote to support the answer, set \
 "answer" to "Not discussed in this transcript", "timestamp" to "", and \
 "supporting_quote" to "".
-5. Return ONLY valid JSON.
+6. Return ONLY valid JSON.
 
 Schema:
 {
