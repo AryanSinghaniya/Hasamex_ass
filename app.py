@@ -32,9 +32,8 @@ import streamlit as st
 
 # Sync Streamlit Community Cloud secrets into os.environ if available
 try:
-    for key in ("ANTHROPIC_API_KEY", "GEMINI_API_KEY"):
-        if key in st.secrets and not os.environ.get(key):
-            os.environ[key] = st.secrets[key]
+    if "ANTHROPIC_API_KEY" in st.secrets and not os.environ.get("ANTHROPIC_API_KEY"):
+        os.environ["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
 except Exception:
     pass
 
@@ -308,10 +307,12 @@ def _init_session():
     if "data_loaded" not in st.session_state:
         st.session_state.data_loaded = False
     # Re-evaluate api_key_ok from environment or Streamlit secrets
-    has_key = bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("GEMINI_API_KEY"))
+    has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
     if not has_key:
         try:
-            has_key = bool(st.secrets.get("ANTHROPIC_API_KEY") or st.secrets.get("GEMINI_API_KEY"))
+            has_key = bool(st.secrets.get("ANTHROPIC_API_KEY"))
+            if has_key:
+                os.environ["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
         except Exception:
             pass
     st.session_state.api_key_ok = has_key
@@ -332,8 +333,8 @@ def _load_data(force: bool = False):
     On first load, calls log_all_headers() which prints the parsed expert
     name/role/market to stdout so identity bugs surface immediately in dev.
     """
-    if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("GEMINI_API_KEY")):
-        logger.info("No API key detected in environment or secrets.")
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        logger.info("ANTHROPIC_API_KEY not detected.")
 
     with st.spinner("📂 Parsing transcripts…"):
         try:
@@ -452,17 +453,26 @@ def _render_answer_card(answer: dict, q_idx: int, q_text: str):
                     unsafe_allow_html=True,
                 )
 
-            # Verified quote
-            if answer.get("quote_verified") and answer.get("verified_quote"):
+            # Verification Status Badge — ALWAYS shown for every non-"not discussed" answer
+            is_verified = bool(answer.get("quote_verified") and answer.get("verified_quote"))
+            if is_verified:
                 st.markdown(
-                    f'<div class="quote-label">✅ Verified Quote</div>'
+                    '<div style="margin:0.5rem 0 0.25rem 0;">'
+                    '<span style="background:rgba(16,185,129,0.15);border:1px solid #10b981;color:#10b981;font-weight:600;font-size:0.78rem;padding:0.2rem 0.6rem;border-radius:9999px;">'
+                    '🛡️ Quote Verification: PASSED</span>'
+                    '</div>'
+                    '<div class="quote-label">✅ Verified Quote</div>'
                     f'<div class="verified-quote">"{answer["verified_quote"]}"</div>',
                     unsafe_allow_html=True,
                 )
-            elif not answer.get("quote_verified"):
+            else:
                 st.markdown(
+                    '<div style="margin:0.5rem 0 0.25rem 0;">'
+                    '<span style="background:rgba(239,68,68,0.15);border:1px solid #ef4444;color:#ef4444;font-weight:600;font-size:0.78rem;padding:0.2rem 0.6rem;border-radius:9999px;">'
+                    '⚠️ Quote Verification: UNVERIFIED / FAILED</span>'
+                    '</div>'
                     '<div class="unverified-warning">'
-                    "⚠️ Quote could not be verified against the source transcript "
+                    "⚠️ Supporting quote could not be verified against the source transcript "
                     "and has been discarded as a precaution."
                     "</div>",
                     unsafe_allow_html=True,
@@ -536,24 +546,23 @@ def _short_q_title(q_text: str) -> str:
 
 def _q_short_label(q_text: str, idx: int) -> str:
     """
-    Derive a short label programmatically from parsed question text,
-    with an explicit fallback tied 1-to-1 to each question in Interview_Guide.txt.
+    Short labels accurately summarizing the actual six questions in data/Interview_Guide.txt:
+      Question 1: Adoption Level
+      Question 2: Barriers to Adoption
+      Question 3: Budget & ROI Importance
+      Question 4: Training & Clinical Outcomes
+      Question 5: 3-5 Year Outlook
+      Question 6: Purchase Decision Timeline
     """
-    # Programmatic derivation: extract title from question text
-    derived = _short_q_title(q_text)
-    if derived and derived != "Question":
-        return derived
-
-    # Fallback list tied explicitly to Question 1–6 in Interview_Guide.txt
-    fallback_labels = [
-        "Adoption Barriers",               # Q1: Adoption barriers & infrastructure
-        "Reimbursement Landscape",         # Q2: Reimbursement & tariff environment
-        "Competitive Dynamics",            # Q3: Platform competitive landscape
-        "Surgeon Training & Pathway",      # Q4: Surgeon training & credentialing
-        "Hospital Procurement Decisions",  # Q5: Hospital procurement & capital purchase
-        "Future Outlook",                  # Q6: 3–5 year market outlook
+    labels = [
+        "Adoption Level",               # Question 1: Current adoption level & description
+        "Barriers to Adoption",         # Question 2: Main barriers to adoption
+        "Budget & ROI Importance",      # Question 3: Importance of hospital budgets / ROI
+        "Training & Clinical Outcomes", # Question 4: Importance of surgeon training & clinical outcomes
+        "3-5 Year Outlook",             # Question 5: Expected adoption trend over 3-5 years
+        "Purchase Decision Timeline",   # Question 6: Typical hospital decision-making / purchase timeline
     ]
-    return fallback_labels[idx] if idx < len(fallback_labels) else f"Q{idx+1}"
+    return labels[idx] if idx < len(labels) else f"Q{idx+1}"
 
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
@@ -664,7 +673,7 @@ def _render_expert_tab(market: str):
 
     # Generate / retrieve answer
     if not st.session_state.api_key_ok:
-        st.warning("Please configure an API key (`GEMINI_API_KEY` or `ANTHROPIC_API_KEY`) in `.env` or Streamlit Cloud Secrets to generate answers.")
+        st.warning("Please configure your `ANTHROPIC_API_KEY` in `.env` or Streamlit Cloud Secrets to generate answers.")
         return
 
     with st.spinner(f"Generating answer for {market}…"):
@@ -701,7 +710,7 @@ def _render_synthesis_tab():
         return
 
     if not st.session_state.api_key_ok:
-        st.warning("Please configure an API key (`GEMINI_API_KEY` or `ANTHROPIC_API_KEY`) in `.env` or Streamlit Cloud Secrets to generate synthesis.")
+        st.warning("Please configure your `ANTHROPIC_API_KEY` in `.env` or Streamlit Cloud Secrets to generate synthesis.")
         return
 
     questions = st.session_state.questions
@@ -829,7 +838,7 @@ def _render_chat_tab():
         return
 
     if not st.session_state.api_key_ok:
-        st.warning("Please configure an API key (`GEMINI_API_KEY` or `ANTHROPIC_API_KEY`) in `.env` or Streamlit Cloud Secrets to use the chat.")
+        st.warning("Please configure your `ANTHROPIC_API_KEY` in `.env` or Streamlit Cloud Secrets to use the chat.")
         return
 
     # Render chat history
@@ -955,10 +964,10 @@ def main():
     if not st.session_state.data_loaded:
         _load_data()
 
-    # API key warning (only shows if missing keys)
+    # API key warning (only shows if ANTHROPIC_API_KEY is missing)
     if not st.session_state.api_key_ok:
         st.warning(
-            "⚠️ No API key found. Please add `GEMINI_API_KEY` (Free) or `ANTHROPIC_API_KEY` to your `.env` file (local) or **Settings → Secrets** (Streamlit Cloud).",
+            "⚠️ No API key found. Please add your `ANTHROPIC_API_KEY` to your `.env` file (local) or into **Settings → Secrets** (Streamlit Cloud).",
             icon="🔑",
         )
 

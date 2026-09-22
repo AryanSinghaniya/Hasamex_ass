@@ -39,6 +39,14 @@ streamlit run app.py
 
 The app will open at `http://localhost:8501`.
 
+> **Note on Cache Management:**
+> Whenever you change the LLM model or provider, always clear the cache by running:
+> ```bash
+> rm -rf cache/*      # Linux / macOS / Git Bash
+> Remove-Item -Path 'cache\*' -Force -Recurse   # PowerShell (Windows)
+> ```
+> Cache keys are content-hash based to avoid redundant API calls during development, so clearing `cache/` ensures new answers are freshly generated.
+
 ---
 
 ## Project Structure
