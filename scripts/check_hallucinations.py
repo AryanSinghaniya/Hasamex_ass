@@ -200,28 +200,12 @@ def verify_answer_claims(
     transcript_text: str,
 ) -> Dict[str, Any]:
     """
-    Extract and verify all numbers and proper nouns in answer against transcript.
+    Extract and verify all numbers and proper nouns in answer against transcript using verify.py.
     """
-    norm_transcript = normalize_text(transcript_text)
-    numbers = extract_numbers_and_measures(answer)
-    proper_nouns = extract_proper_nouns(answer)
-
-    unverified = []
-    verified = []
-
-    for num in numbers:
-        ok, ratio = check_entity_in_transcript(num, transcript_text, norm_transcript)
-        if ok:
-            verified.append((num, "Number/Metric", ratio))
-        else:
-            unverified.append((num, "Number/Metric", ratio))
-
-    for pn in proper_nouns:
-        ok, ratio = check_entity_in_transcript(pn, transcript_text, norm_transcript)
-        if ok:
-            verified.append((pn, "Proper Noun/Entity", ratio))
-        else:
-            unverified.append((pn, "Proper Noun/Entity", ratio))
+    unverified = verify.check_answer_grounding(answer, transcript_text)
+    numbers = verify.extract_numbers_and_measures(answer)
+    proper_nouns = verify.extract_proper_nouns_and_phrases(answer)
+    verified = [item for item in (numbers + proper_nouns) if item not in unverified]
 
     return {
         "verified": verified,
@@ -371,8 +355,8 @@ def load_or_generate_all_answers(force_generate: bool = False) -> Dict[str, Dict
                     print(f"    Rate limit or error encountered; using grounded reference answer.")
                     raw = grounded_answers[market][q_idx]
 
-                def _re_prompt(q, ch, en, bad_quote):
-                    return llm.re_prompt_exact_quote(q, ch, en, market, bad_quote)
+                def _re_prompt(q, ch, en, bad_quote="", ungrounded_items=None):
+                    return llm.re_prompt_exact_quote(q, ch, en, market, bad_quote, ungrounded_items)
 
                 ans_data = verify.verify_and_repair(
                     answer_json=raw,
@@ -454,12 +438,12 @@ def main():
             print(f"    Verified Quote: \"{ans_dict.get('supporting_quote', '')}\"")
             print(f"    Extracted Entities/Metrics ({len(verified) + len(unverified)}):")
             
-            for item, kind, ratio in verified:
-                print(f"      - {item} [{kind}] -> VERIFIED (match={ratio:.2f})")
+            for item in verified:
+                print(f"      - {item} -> VERIFIED")
 
             if unverified:
-                for item, kind, ratio in unverified:
-                    print(f"      *** UNVERIFIED CLAIM — possible fabrication: '{item}' [{kind}] (best ratio={ratio:.2f}) ***")
+                for item in unverified:
+                    print(f"      *** UNVERIFIED CLAIM — possible fabrication: '{item}' ***")
             print()
 
     print("=" * 72)

@@ -7,7 +7,8 @@ Provides four main operations:
   3. synthesize_question()   — cross-expert synthesis for one question
   4. ask_panel()             — free-form chat with chunk-based retrieval context
 
-All calls use Groq (openai/gpt-oss-120b) via high-speed LPU inference as the single provider.
+All calls go via the Groq API (high-speed LPU inference) as the single provider.
+The active model is controlled by the GROQ_MODEL constant below.
 Disk caching prevents redundant API calls on UI re-runs.
 """
 
@@ -69,7 +70,7 @@ def get_active_model_name() -> str:
 # ── Cache helpers ────────────────────────────────────────────────────────────
 
 def _cache_key(*parts: str) -> str:
-    combined = "groq_v1||" + "||".join(parts)
+    combined = f"{GROQ_MODEL}||" + "||".join(parts)
     return hashlib.md5(combined.encode()).hexdigest()[:16]
 
 
@@ -431,23 +432,33 @@ def re_prompt_exact_quote(
     chunks: list[dict],
     expert_name: str,
     market: str,
-    bad_quote: str,
+    bad_quote: str = "",
+    ungrounded_items: list[str] = None,
 ) -> dict:
     """
-    Re-prompt Groq with an explicit instruction to copy the quote exactly.
-    Called by verify.py when the first attempt's quote fails verification.
-
-    Returns dict: {answer, timestamp, supporting_quote}
+    Re-prompt Groq with explicit instructions if quote or answer grounding fails.
     """
     transcript_text = _format_chunks_as_text(chunks)
+    feedback_lines = []
+    if bad_quote:
+        feedback_lines.append(
+            f"PREVIOUS UNVERIFIABLE QUOTE (could not be found verbatim in the transcript):\n\"{bad_quote}\"\n"
+            f"Provide a supporting_quote that is an exact, character-for-character substring of the transcript."
+        )
+    if ungrounded_items:
+        items_str = ", ".join(f"'{it}'" for it in ungrounded_items)
+        feedback_lines.append(
+            f"Your previous answer included specific facts ({items_str}) that could not be found in the transcript. "
+            f"Rewrite your answer using ONLY information explicitly stated in the transcript — "
+            f"no numbers, names, or specific details unless they appear verbatim in the source text."
+        )
+
+    feedback_str = "\n\n".join(feedback_lines)
     user_message = (
         f"TRANSCRIPT EXCERPT (Expert: {expert_name}, Market: {market}):\n\n"
         f"{transcript_text}\n\n"
         f"QUESTION:\n{question}\n\n"
-        f"PREVIOUS UNVERIFIABLE QUOTE (do not reuse this — it could not be "
-        f"found verbatim in the transcript):\n\"{bad_quote}\"\n\n"
-        f"Please provide a corrected answer with a supporting_quote that is a "
-        f"verbatim, unmodified substring of the transcript text above."
+        f"{feedback_str}"
     )
     return _call_groq_json(EXPERT_ANSWER_RETRY_SYSTEM, user_message)
 

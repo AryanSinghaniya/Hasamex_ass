@@ -2,9 +2,10 @@
 
 A Streamlit application for analyzing expert interview transcripts in a
 robotic-surgery market research context. The app parses three transcripts
-(France, Germany, UK), generates structured Q&A answers using the Groq
-API (openai/gpt-oss-120b), verifies every quote programmatically, and provides cross-expert synthesis
-and a free-form retrieval-based chat interface.
+(France, Germany, UK), generates structured Q&A answers via the Groq API
+(currently `qwen/qwen3-8b-27b`), verifies every quote programmatically against the
+source transcript, and provides cross-expert synthesis and a free-form
+retrieval-based chat interface.
 
 ---
 
@@ -85,22 +86,23 @@ Hasamex_ass/
 parser.py  ──► cache/parsed_<market>.json
    │               (structured chunks)
    ▼
-llm.py  ──────► Groq API (openai/gpt-oss-120b)
+llm.py  ──────► Groq API (qwen/qwen3-8b-27b)
    │                │
    │                ▼
    │          raw answer JSON
    │          {answer, timestamp, supporting_quote}
    │
    ▼
-verify.py  ──► programmatic quote check
-   │               (difflib SequenceMatcher)
+verify.py  ──► dual-layer verification:
+   │             1. quote check (difflib SequenceMatcher ≥ 0.85)
+   │             2. answer grounding (numbers + proper nouns vs. transcript)
    │
-   ├── pass ──► display verified answer + quote
+   ├── pass ──► display verified answer + quote ("VERIFIED" badge)
    │
-   └── fail ──► re-prompt once → check again
+   └── fail ──► re-prompt once with explicit feedback → re-check
                     │
                     ├── pass ──► display corrected answer
-                    └── fail ──► discard quote, display warning
+                    └── fail ──► flag "UNGROUNDED CLAIMS" warning in UI
 ```
 
 ### Module Responsibilities
@@ -108,24 +110,24 @@ verify.py  ──► programmatic quote check
 | Module | Responsibility |
 |--------|----------------|
 | `parser.py` | Reads `.txt` files; splits header (expert name, role, market) from timestamped body; returns list of `{expert_name, market, timestamp, speaker, text, chunk_index}` dicts; caches to `cache/parsed_<market>.json` |
-| `llm.py` | Calls Groq API (`openai/gpt-oss-120b`) via LPU inference; provides `get_expert_answer()`, `re_prompt_exact_quote()`, `synthesize_question()`, `ask_panel()`, and `retrieve_chunks()`. All answers disk-cached. |
-| `verify.py` | `verify_quote()` checks substring presence using exact normalised match then `difflib.SequenceMatcher` (threshold 0.85). `verify_and_repair()` orchestrates the re-prompt flow. |
-| `app.py` | Streamlit UI: sidebar file status, per-expert tabs, Themes & Disagreements tab, Ask the Panel chat. |
+| `llm.py` | Calls Groq API via LPU inference; provides `get_expert_answer()`, `re_prompt_exact_quote()`, `synthesize_question()`, `ask_panel()`, and `retrieve_chunks()`. Active model set by `GROQ_MODEL` constant. All answers disk-cached keyed by `(model_id, question_hash, market, file_hash)`. |
+| `verify.py` | Layer 1: `verify_quote()` checks `supporting_quote` is a real substring of the transcript. Layer 2: `check_answer_grounding()` extracts numbers, currencies, proper nouns from the answer paragraph and verifies each against the transcript. `verify_and_repair()` orchestrates one re-prompt on failure. |
+| `app.py` | Streamlit UI: sidebar file status, per-expert tabs, Themes & Disagreements tab, Ask the Panel chat. Every answer card shows an unconditional quote-verification badge and an answer-grounding badge. |
 
 ---
 
 ## Model Choice Rationale
 
-**Model:** `openai/gpt-oss-120b` (on Groq LPU Cloud)
+**Provider:** Groq LPU Cloud  
+**Active model:** `qwen/qwen3-8b-27b` (set via `GROQ_MODEL` constant in `llm.py`)
 
-Groq was chosen as the single LLM provider for this project for the following reasons:
+Groq was chosen as the single LLM provider for this project for three concrete reasons:
 
-1. **Blazing Fast LPU Inference**: Groq's custom Language Processing Units deliver 250–500 tokens/second, generating answers and cross-transcript syntheses in fractions of a second with zero UI lag.
-2. **Deep Reasoning & Exact Quotes**: The high-capacity 120B parameter model (`openai/gpt-oss-120b`) excels at transcript reading comprehension, accurately identifying verbatim quotes and timestamps without fabrication.
-3. **Genuine Free Tier**: Groq Cloud provides a free tier with high rate limits (30 RPM and generous token buckets), supporting seamless evaluation runs without paywalls.
-4. **Guaranteed JSON Schema Compliance**: Built-in `response_format: {"type": "json_object"}` reliably formats structured outputs (`answer`, `timestamp`, `supporting_quote`) for automated quote verification.
+1. **Free tier with usable rate limits**: Groq Cloud provides a free tier (30 RPM / generous token buckets) that supports a full 18-answer evaluation run without a paywall — essential for a demo project.
+2. **LPU speed**: Groq's custom Language Processing Units deliver 250–500 tokens/second, making sequential Q&A calls fast enough that the Streamlit UI feels responsive even without parallelism.
+3. **JSON mode**: The `response_format: {"type": "json_object"}` parameter reliably constrains output to valid JSON, which the quote-verification pipeline depends on. Not all providers support this at the free tier.
 
-> **Changelog Note on Model Switch:** The codebase was migrated to Groq as the single high-speed provider to deliver instant response times, reliable JSON output, and 100% free live operation.
+The model (`qwen/qwen3-8b-27b`) was selected because it is available on Groq's free tier and supports JSON mode. The model ID is not hardcoded into any prose — it is read directly from the `GROQ_MODEL` constant in `llm.py` so documentation cannot drift out of sync again.
 
 ---
 

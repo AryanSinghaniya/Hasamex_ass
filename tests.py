@@ -199,6 +199,23 @@ def test_not_discussed_bypasses():
 run("'Not discussed' answer bypasses quote verification", test_not_discussed_bypasses)
 
 
+def test_grounding_clean():
+    clean_ans = "The single biggest barrier in France is capital expenditure with da Vinci systems costing one-point-five to two million euros upfront and annual service contracts up to two hundred thousand euros. ARS approval takes twelve to eighteen months."
+    ungrounded = verify.check_answer_grounding(clean_ans, FRANCE_TEXT)
+    assert len(ungrounded) == 0, f"Expected 0 ungrounded claims, got: {ungrounded}"
+run("Clean grounded answer passes check_answer_grounding with 0 ungrounded claims", test_grounding_clean)
+
+
+def test_grounding_fabricated():
+    fab_ans = "France has 850 robotic centres and ANSM approved Siemens Corindus in 2023 with a 500,000 euro grant."
+    ungrounded = verify.check_answer_grounding(fab_ans, FRANCE_TEXT)
+    assert len(ungrounded) > 0, "Fabricated answer must return ungrounded claims"
+    assert any("850" in u for u in ungrounded)
+    assert any("Siemens Corindus" in u or "ANSM" in u for u in ungrounded)
+run("Fabricated facts/numbers are caught by check_answer_grounding", test_grounding_fabricated)
+
+
+
 # =====================================================================
 # 3. Fabricated-quote injection (end-to-end pipeline test)
 # =====================================================================

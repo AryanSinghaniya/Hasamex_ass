@@ -383,11 +383,11 @@ def _get_or_generate_answer(market: str, q_idx: int) -> Optional[dict]:
         raw_answer["market"] = market
         return raw_answer
 
-    # ── Quote verification ──────────────────────────────────────────────
+    # ── Quote & Answer Grounding verification ───────────────────────────
     transcript_text = transcript_parser.get_transcript_text(market)
 
-    def _re_prompt(q, ch, en, bad_quote):
-        return llm.re_prompt_exact_quote(q, ch, en, market, bad_quote)
+    def _re_prompt(q, ch, en, bad_quote="", ungrounded_items=None):
+        return llm.re_prompt_exact_quote(q, ch, en, market, bad_quote, ungrounded_items)
 
     verified = verify.verify_and_repair(
         answer_json=raw_answer,
@@ -486,6 +486,30 @@ def _render_answer_card(answer: dict, q_idx: int, q_text: str):
                     "</div>",
                     unsafe_allow_html=True,
                 )
+
+            # Grounding Status Badge — verifies numbers and proper nouns in the answer paragraph
+            if answer.get("answer_ungrounded"):
+                flagged = answer.get("ungrounded_claims", [])
+                flagged_str = ", ".join(f"'{c}'" for c in flagged) if flagged else ""
+                detail = f" Flagged ungrounded details: {flagged_str}." if flagged_str else ""
+                st.markdown(
+                    '<div style="margin:0.5rem 0 0.25rem 0;">'
+                    '<span style="background:rgba(239,68,68,0.2);border:1px solid #ef4444;color:#ef4444;font-weight:700;font-size:0.78rem;padding:0.2rem 0.6rem;border-radius:9999px;">'
+                    '🚨 Answer Grounding: UNGROUNDED CLAIMS DETECTED</span>'
+                    '</div>'
+                    '<div style="background:#450a0a;border-left:4px solid #ef4444;color:#fca5a5;padding:0.6rem 0.8rem;font-size:0.82rem;border-radius:4px;margin-bottom:0.6rem;">'
+                    f'⚠️ This answer may contain details not found in the transcript — verify manually.{detail}'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+            elif answer.get("answer_grounded"):
+                st.markdown(
+                    '<div style="margin:0.5rem 0 0.25rem 0;">'
+                    '<span style="background:rgba(16,185,129,0.15);border:1px solid #10b981;color:#10b981;font-weight:600;font-size:0.78rem;padding:0.2rem 0.6rem;border-radius:9999px;">'
+                    '🛡️ Answer Grounding: 100% VERIFIED</span>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
         else:
             st.markdown(
                 '<span class="not-discussed">⚪ Not discussed in this transcript</span>',
@@ -555,21 +579,21 @@ def _short_q_title(q_text: str) -> str:
 
 def _q_short_label(q_text: str, idx: int) -> str:
     """
-    Short labels accurately summarizing the actual six questions in data/Interview_Guide.txt:
-      Question 1: Adoption Level
-      Question 2: Barriers to Adoption
-      Question 3: Budget & ROI Importance
-      Question 4: Training & Clinical Outcomes
-      Question 5: 3-5 Year Outlook
-      Question 6: Purchase Decision Timeline
+    Short labels matching the actual six question headings in data/Interview_Guide.txt:
+      Q1: ADOPTION BARRIERS
+      Q2: REIMBURSEMENT LANDSCAPE
+      Q3: COMPETITIVE DYNAMICS
+      Q4: SURGEON TRAINING & ADOPTION PATHWAY
+      Q5: HOSPITAL PROCUREMENT DECISIONS
+      Q6: FUTURE OUTLOOK
     """
     labels = [
-        "Adoption Level",               # Question 1: Current adoption level & description
-        "Barriers to Adoption",         # Question 2: Main barriers to adoption
-        "Budget & ROI Importance",      # Question 3: Importance of hospital budgets / ROI
-        "Training & Clinical Outcomes", # Question 4: Importance of surgeon training & clinical outcomes
-        "3-5 Year Outlook",             # Question 5: Expected adoption trend over 3-5 years
-        "Purchase Decision Timeline",   # Question 6: Typical hospital decision-making / purchase timeline
+        "Adoption Barriers",              # Q1: Primary barriers to robotic surgery adoption
+        "Reimbursement Landscape",        # Q2: How reimbursement affects uptake
+        "Competitive Dynamics",           # Q3: Competitive landscape among platforms
+        "Surgeon Training & Pathway",     # Q4: Surgeon training pathway & credentialing
+        "Hospital Procurement Decisions", # Q5: How hospitals structure procurement decisions
+        "Future Outlook",                 # Q6: 3-5 year outlook for robotic surgery
     ]
     return labels[idx] if idx < len(labels) else f"Q{idx+1}"
 
